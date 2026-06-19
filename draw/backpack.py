@@ -492,15 +492,15 @@ async def _draw_backpack_image_impl(user_data: Dict[str, Any], data_dir: str) ->
             
             # 属性加成 - 参考format_accessory_or_rod函数
             if rod.get('bonus_fish_quality_modifier', 1.0) != 1.0 and rod.get('bonus_fish_quality_modifier', 1) != 1 and rod.get('bonus_fish_quality_modifier', 1) > 0:
-                bonus_text = f"鱼类品质加成: {to_percentage(rod['bonus_fish_quality_modifier'])}"
+                bonus_text = f"高品质倍率: x{rod['bonus_fish_quality_modifier']:.2f}"
                 draw.text((x + 15, bonus_y), bonus_text, font=tiny_font, fill=primary_light)
                 bonus_y += 18
             if rod.get('bonus_fish_quantity_modifier', 1.0) != 1.0 and rod.get('bonus_fish_quantity_modifier', 1) != 1 and rod.get('bonus_fish_quantity_modifier', 1) > 0:
-                bonus_text = f"鱼类数量加成: {to_percentage(rod['bonus_fish_quantity_modifier'])}"
+                bonus_text = f"渔获数量倍率: x{rod['bonus_fish_quantity_modifier']:.2f}"
                 draw.text((x + 15, bonus_y), bonus_text, font=tiny_font, fill=primary_light)
                 bonus_y += 18
             if rod.get('bonus_rare_fish_chance', 1.0) != 1.0 and rod.get('bonus_rare_fish_chance', 1) != 1 and rod.get('bonus_rare_fish_chance', 1) > 0:
-                bonus_text = f"钓鱼几率加成: {to_percentage(rod['bonus_rare_fish_chance'])}"
+                bonus_text = f"稀有权重: +{to_percentage(rod['bonus_rare_fish_chance'])}"
                 draw.text((x + 15, bonus_y), bonus_text, font=tiny_font, fill=primary_light)
                 bonus_y += 18
             
@@ -607,24 +607,24 @@ async def _draw_backpack_image_impl(user_data: Dict[str, Any], data_dir: str) ->
             # 属性加成 - 参考format_accessory_or_rod函数
             bonus_y = y + 85
             if accessory.get('bonus_fish_quality_modifier', 1.0) != 1.0 and accessory.get('bonus_fish_quality_modifier', 1) != 1 and accessory.get('bonus_fish_quality_modifier', 1) > 0:
-                bonus_text = f"鱼类品质加成: {to_percentage(accessory['bonus_fish_quality_modifier'])}"
+                bonus_text = f"高品质倍率: x{accessory['bonus_fish_quality_modifier']:.2f}"
                 draw.text((x + 15, bonus_y), bonus_text, font=tiny_font, fill=primary_light)
                 bonus_y += 18
             if accessory.get('bonus_fish_quantity_modifier', 1.0) != 1.0 and accessory.get('bonus_fish_quantity_modifier', 1) != 1 and accessory.get('bonus_fish_quantity_modifier', 1) > 0:
-                bonus_text = f"鱼类数量加成: {to_percentage(accessory['bonus_fish_quantity_modifier'])}"
+                bonus_text = f"渔获数量倍率: x{accessory['bonus_fish_quantity_modifier']:.2f}"
                 draw.text((x + 15, bonus_y), bonus_text, font=tiny_font, fill=primary_light)
                 bonus_y += 18
             if accessory.get('bonus_rare_fish_chance', 1.0) != 1.0 and accessory.get('bonus_rare_fish_chance', 1) != 1 and accessory.get('bonus_rare_fish_chance', 1) > 0:
-                bonus_text = f"钓鱼几率加成: {to_percentage(accessory['bonus_rare_fish_chance'])}"
+                bonus_text = f"稀有权重: +{to_percentage(accessory['bonus_rare_fish_chance'])}"
                 draw.text((x + 15, bonus_y), bonus_text, font=tiny_font, fill=primary_light)
                 bonus_y += 18
             if accessory.get('bonus_coin_modifier', 1.0) != 1.0 and accessory.get('bonus_coin_modifier', 1) != 1 and accessory.get('bonus_coin_modifier', 1) > 0:
-                bonus_text = f"重量/价值加成: {to_percentage(accessory['bonus_coin_modifier'])}"
+                bonus_text = f"重量/价值倍率: x{accessory['bonus_coin_modifier']:.2f}"
                 draw.text((x + 15, bonus_y), bonus_text, font=tiny_font, fill=gold_color)
                 bonus_y += 18
             if accessory.get('fishing_cooldown_modifier', 1.0) != 1.0 and accessory.get('fishing_cooldown_modifier', 1) != 1 and accessory.get('fishing_cooldown_modifier', 1) > 0:
                 cooldown_change = (1 - accessory['fishing_cooldown_modifier']) * 100
-                bonus_text = f"钓鱼时间: -{cooldown_change:.0f}%"
+                bonus_text = f"冷却倍率: x{accessory['fishing_cooldown_modifier']:.2f} (-{cooldown_change:.0f}%)"
                 draw.text((x + 15, bonus_y), bonus_text, font=tiny_font, fill=primary_light)
                 bonus_y += 18
             

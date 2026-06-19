@@ -40,11 +40,11 @@
                         <td>{{ item.name }}</td>
                         <td>{{ '★' * item.rarity }}</td>
                         <td>
-                            <span class="badge bg-secondary">品质: {{ item.bonus_fish_quality_modifier }}</span>
-                            <span class="badge bg-secondary">数量: {{ item.bonus_fish_quantity_modifier }}</span>
-                            <span class="badge bg-secondary">稀有: {{ item.bonus_rare_fish_chance }}</span>
-                            <span class="badge bg-warning text-dark">重量/价值: {{ item.bonus_coin_modifier }}</span>
-                            <span class="badge bg-info text-dark">钓鱼时间: x{{ item.fishing_cooldown_modifier }}</span>
+                            <span class="badge bg-secondary" title="通过对数公式转换为高品质鱼触发概率">高品质倍率: x{{ item.bonus_fish_quality_modifier }}</span>
+                            <span class="badge bg-primary" title="1.30 表示单次渔获期望数量为基础的 1.30 倍">渔获数量倍率: x{{ item.bonus_fish_quantity_modifier }}</span>
+                            <span class="badge bg-info" title="叠加到稀有鱼权重转移比例">稀有权重: +{{ item.bonus_rare_fish_chance * 100 }}%</span>
+                            <span class="badge bg-warning text-dark">重量/价值倍率: x{{ item.bonus_coin_modifier }}</span>
+                            <span class="badge bg-dark">冷却倍率: x{{ item.fishing_cooldown_modifier }}</span>
                         </td>
                         <td class="text-end">
                             <button class="btn btn-sm btn-info edit-btn"
@@ -80,10 +80,10 @@
                         <div class="col-md-8"><label>名称</label><input type="text" name="name" class="form-control" required></div>
                         <div class="col-md-4"><label>稀有度</label><input type="number" name="rarity" class="form-control" min="1" required></div>
                         <div class="col-12"><label>描述</label><textarea name="description" class="form-control" rows="2"></textarea></div>
-                        <div class="col-md-4"><label>品质加成</label><input type="number" step="0.01" name="bonus_fish_quality_modifier" class="form-control" value="1.0"></div>
-                        <div class="col-md-4"><label>数量加成</label><input type="number" step="0.01" name="bonus_fish_quantity_modifier" class="form-control" value="1.0"></div>
-                        <div class="col-md-4"><label>稀有加成</label><input type="number" step="0.01" name="bonus_rare_fish_chance" class="form-control" value="0.0"></div>
-                        <div class="col-md-4"><label>重量/价值加成</label><input type="number" step="0.01" name="bonus_coin_modifier" class="form-control" value="1.0"></div>
+                        <div class="col-md-4"><label>高品质触发倍率</label><input type="number" step="0.01" name="bonus_fish_quality_modifier" class="form-control" value="1.0"><div class="form-text">通过对数公式换算为高品质触发概率</div></div>
+                        <div class="col-md-4"><label>渔获数量倍率</label><input type="number" step="0.01" name="bonus_fish_quantity_modifier" class="form-control" value="1.0"><div class="form-text">1.30 = 30% 概率额外获得 1 条</div></div>
+                        <div class="col-md-4"><label>稀有鱼权重加成</label><input type="number" step="0.01" name="bonus_rare_fish_chance" class="form-control" value="0.0"><div class="form-text">0.05 = 额外转移 5% 低星权重</div></div>
+                        <div class="col-md-4"><label>渔获重量/基础价值倍率</label><input type="number" step="0.01" name="bonus_coin_modifier" class="form-control" value="1.0"><div class="form-text">1.10 = 重量和基础价值均增加 10%</div></div>
                         <div class="col-md-4"><label>钓鱼时间倍率 (0.75 = -25%)</label><input type="number" step="0.01" min="0" name="fishing_cooldown_modifier" class="form-control" value="1.0"></div>
                         <div class="col-md-4"><label>装备槽类型</label><input type="text" name="slot_type" class="form-control" value="general"></div>
                         <div class="col-md-4"><label>图标URL(可选)</label><input type="text" name="icon_url" class="form-control"></div>

@@ -235,11 +235,17 @@ def format_accessory_or_rod(accessory_or_rod: dict) -> str:
     else:
         message += f"   - {'🔓 未锁定'}\n"
     if accessory_or_rod.get("bonus_fish_quality_modifier", 1.0) != 1.0 and accessory_or_rod.get("bonus_fish_quality_modifier", 1) != 1 and accessory_or_rod.get("bonus_fish_quality_modifier", 1) > 0:
-        message += f"   - ✨鱼类品质加成: {to_percentage(accessory_or_rod['bonus_fish_quality_modifier'])}\n"
+        message += f"   - ✨高品质触发倍率: x{accessory_or_rod['bonus_fish_quality_modifier']:.2f}\n"
     if accessory_or_rod.get("bonus_fish_quantity_modifier", 1.0) != 1.0 and accessory_or_rod.get("bonus_fish_quantity_modifier", 1) != 1 and accessory_or_rod.get("bonus_fish_quantity_modifier", 1) > 0:
-        message += f"   - 📊鱼类数量加成: {to_percentage(accessory_or_rod['bonus_fish_quantity_modifier'])}\n"
+        message += f"   - 📊渔获数量倍率: x{accessory_or_rod['bonus_fish_quantity_modifier']:.2f}\n"
     if accessory_or_rod.get("bonus_rare_fish_chance", 1.0) != 1.0 and accessory_or_rod.get("bonus_rare_fish_chance", 1) != 1 and accessory_or_rod.get("bonus_rare_fish_chance", 1) > 0:
-        message += f"   - 🎣钓鱼几率加成: {to_percentage(accessory_or_rod['bonus_rare_fish_chance'])}\n"
+        message += f"   - 🎣稀有鱼权重加成: +{to_percentage(accessory_or_rod['bonus_rare_fish_chance'])}\n"
+    if accessory_or_rod.get("bonus_coin_modifier", 1.0) != 1.0 and accessory_or_rod.get("bonus_coin_modifier", 1.0) > 0:
+        message += f"   - ⚖️渔获重量/基础价值倍率: x{accessory_or_rod['bonus_coin_modifier']:.2f}\n"
+    if accessory_or_rod.get("fishing_cooldown_modifier", 1.0) != 1.0 and accessory_or_rod.get("fishing_cooldown_modifier", 1.0) > 0:
+        cooldown_modifier = accessory_or_rod["fishing_cooldown_modifier"]
+        cooldown_change = (cooldown_modifier - 1) * 100
+        message += f"   - ⏱️钓鱼冷却倍率: x{cooldown_modifier:.2f} (等待时间{cooldown_change:+.0f}%)\n"
     if accessory_or_rod.get("description"):
         message += f"   - 📋描述: {accessory_or_rod['description']}\n"
     message += "\n"
