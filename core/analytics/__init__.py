@@ -8,6 +8,7 @@ from .expected_value import (
     expected_gacha_return,
     quality_bonus_chance,
     weighted_fish_value,
+    weighted_fish_metrics,
 )
 
 __all__ = [
@@ -18,4 +19,5 @@ __all__ = [
     "expected_gacha_return",
     "quality_bonus_chance",
     "weighted_fish_value",
+    "weighted_fish_metrics",
 ]

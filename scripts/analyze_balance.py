@@ -14,11 +14,13 @@ if str(REPO_ROOT.parent) not in sys.path:
 
 analytics = importlib.import_module(f"{REPO_ROOT.name}.core.analytics")
 game_config = importlib.import_module(f"{REPO_ROOT.name}.core.config.game_config")
+bait_mechanics = importlib.import_module(f"{REPO_ROOT.name}.core.mechanics")
 FishingScenario = analytics.FishingScenario
 GachaEntry = analytics.GachaEntry
 expected_fishing_return = analytics.expected_fishing_return
 expected_gacha_return = analytics.expected_gacha_return
 SELL_PRICE_BY_RARITY = game_config.SELL_PRICE_BY_RARITY
+bait_cost_per_attempt = bait_mechanics.bait_cost_per_attempt
 
 
 def load_fish_values(
@@ -64,6 +66,7 @@ def analyze(database: Path) -> dict[str, list[dict[str, float | int | str]]]:
     connection.row_factory = sqlite3.Row
     try:
         zones = []
+        zone_inputs = {}
         for row in connection.execute(
             "SELECT id, name, configs, fishing_cost FROM fishing_zones ORDER BY id"
         ):
@@ -71,15 +74,66 @@ def analyze(database: Path) -> dict[str, list[dict[str, float | int | str]]]:
             distribution = config.get("rarity_distribution")
             if not distribution:
                 continue
+            fish_values = load_fish_values(connection, row["id"])
+            zone_inputs[row["id"]] = (distribution, fish_values, row["fishing_cost"])
             result = expected_fishing_return(
                 distribution,
-                load_fish_values(connection, row["id"]),
+                fish_values,
                 FishingScenario(
                     fishing_cost=row["fishing_cost"],
                     cooldown_seconds=180,
                 ),
             )
             zones.append({"id": row["id"], "name": row["name"], **result})
+
+        baits = []
+        if zone_inputs:
+            for bait in connection.execute("SELECT * FROM baits ORDER BY cost, bait_id"):
+                preferred_zone_id = (
+                    4 if bait["required_rod_rarity"] >= 4 else 3
+                )
+                bait_zone_id = (
+                    preferred_zone_id
+                    if preferred_zone_id in zone_inputs
+                    else next(iter(zone_inputs))
+                )
+                distribution, fish_values, fishing_cost = zone_inputs[bait_zone_id]
+                baseline = expected_fishing_return(
+                    distribution,
+                    fish_values,
+                    FishingScenario(
+                        fishing_cost=fishing_cost,
+                        cooldown_seconds=180,
+                    ),
+                )
+                scenario = FishingScenario(
+                    success_rate=min(0.7 + bait["success_rate_modifier"], 1.0),
+                    quantity_modifier=bait["quantity_modifier"],
+                    value_modifier=bait["value_modifier"],
+                    rare_bonus=min(bait["rare_chance_modifier"], 0.3),
+                    fishing_cost=fishing_cost,
+                    consumable_cost=bait_cost_per_attempt(bait, 180),
+                    cooldown_seconds=180,
+                    garbage_reduction=bait["garbage_reduction_modifier"],
+                )
+                result = expected_fishing_return(
+                    distribution, fish_values, scenario
+                )
+                baits.append(
+                    {
+                        "id": bait["bait_id"],
+                        "name": bait["name"],
+                        "zone_id": bait_zone_id,
+                        "cost_per_attempt": scenario.consumable_cost,
+                        "gross_uplift": (
+                            result["gross_value"] / baseline["gross_value"] - 1
+                        ),
+                        "net_change": (
+                            result["net_value"] - baseline["net_value"]
+                        ),
+                        **result,
+                    }
+                )
 
         catalog_values = load_catalog_values(connection)
         pools = []
@@ -113,7 +167,7 @@ def analyze(database: Path) -> dict[str, list[dict[str, float | int | str]]]:
                     **result,
                 }
             )
-        return {"zones": zones, "gacha_pools": pools}
+        return {"zones": zones, "baits": baits, "gacha_pools": pools}
     finally:
         connection.close()
 
@@ -137,6 +191,14 @@ def main() -> int:
             f"{row['id']}: {row['name']} | gross={row['gross_value']:.2f} "
             f"net={row['net_value']:.2f} | return={row['return_ratio']:.2f}x "
             f"| net/hour={row['net_value_per_hour']:.2f}"
+        )
+    print("\nBaits (baseline zone follows rod requirement)")
+    for row in report["baits"]:
+        print(
+            f"{row['id']}: {row['name']} | zone={row['zone_id']} "
+            f"| uplift={row['gross_uplift']:.1%} "
+            f"| cost/attempt={row['cost_per_attempt']:.2f} "
+            f"| net change={row['net_change']:.2f}"
         )
     print("\nGacha pools")
     for row in report["gacha_pools"]:

@@ -20,6 +20,7 @@ from ..repositories.abstract_repository import (
 from ..domain.models import FishingRecord, TaxRecord, FishingZone
 from ..services.fishing_zone_service import FishingZoneService
 from ..utils import get_now, get_fish_template, get_today, get_last_reset_time, calculate_after_refine
+from ..mechanics import consumes_bait_per_attempt
 
 
 class FishingService:
@@ -224,7 +225,10 @@ class FishingService:
                         # 鱼饵已过期，清除当前鱼饵
                         user.current_bait_id = None
                         user.bait_start_time = None
-                        self.inventory_repo.update_bait_quantity(user_id, cur_bait_id, -1)
+                        if bait_template.is_consumable:
+                            self.inventory_repo.update_bait_quantity(
+                                user_id, cur_bait_id, -1
+                            )
                         self.user_repo.update(user)
                         logger.warning(f"用户 {user_id} 的当前鱼饵{bait_template}已过期，已被清除。")
             else:
@@ -232,7 +236,10 @@ class FishingService:
                     # 如果鱼饵没有设置持续时间, 是一次性鱼饵，消耗一个鱼饵
                     user_bait_inventory = self.inventory_repo.get_user_bait_inventory(user_id)
                     if user_bait_inventory is not None and user_bait_inventory.get(user.current_bait_id, 0) > 0:
-                        self.inventory_repo.update_bait_quantity(user_id, user.current_bait_id, -1)
+                        if consumes_bait_per_attempt(bait_template):
+                            self.inventory_repo.update_bait_quantity(
+                                user_id, user.current_bait_id, -1
+                            )
                     else:
                         # 如果用户没有库存鱼饵，清除当前鱼饵
                         user.current_bait_id = None
@@ -305,14 +312,7 @@ class FishingService:
             adjusted_distribution = rarity_distribution
         
         # 根据调整后的分布加权随机抽取稀有度
-        rarity_index = random.choices(range(len(adjusted_distribution)), weights=adjusted_distribution, k=1)[0]
-        
-        if rarity_index == 5:  # 抽中6+星组合
-            # 从6星及以上的鱼中随机选择，兼容区域限定鱼
-            rarity = self._get_random_high_rarity(zone)
-        else:
-            # 1-5星直接对应
-            rarity = rarity_index + 1
+        rarity = self._select_rarity(adjusted_distribution, zone)
             
         fish_template = self._get_fish_template(rarity, zone, coins_chance)
 
@@ -324,7 +324,7 @@ class FishingService:
             # 根据垃圾鱼减少修正值决定是否重新选择一次
             if random.random() < garbage_reduction_modifier:
                 # 重新选择一条鱼
-                new_rarity = random.choices(range(1, len(rarity_distribution) + 1), weights=rarity_distribution, k=1)[0]
+                new_rarity = self._select_rarity(adjusted_distribution, zone)
                 new_fish_template = self._get_fish_template(new_rarity, zone, coins_chance)
 
                 if new_fish_template:
@@ -716,6 +716,15 @@ class FishingService:
             return self.item_template_repo.get_random_fish(rarity)
 
         return get_fish_template(fish_list, coins_chance)
+
+    def _select_rarity(self, distribution: list, zone: FishingZone) -> int:
+        """Select a concrete rarity from the six runtime rarity buckets."""
+        rarity_index = random.choices(
+            range(len(distribution)), weights=distribution, k=1
+        )[0]
+        if rarity_index == 5:
+            return self._get_random_high_rarity(zone)
+        return rarity_index + 1
 
     def _get_random_high_rarity(self, zone: FishingZone = None) -> int:
         """从6星及以上鱼类中随机选择一个稀有度，兼容区域限定鱼"""

@@ -12,6 +12,7 @@ from astrbot_plugin_fishing.core.analytics.expected_value import (
     expected_gacha_return,
     quality_bonus_chance,
     weighted_fish_value,
+    weighted_fish_metrics,
 )
 
 
@@ -34,6 +35,23 @@ def test_quality_bonus_matches_runtime_logarithmic_formula():
 def test_weighted_fish_value_uses_base_value_as_weight():
     assert weighted_fish_value([10, 20]) == pytest.approx(50 / 3)
     assert weighted_fish_value([10, 20], 0) == pytest.approx(15)
+
+
+def test_weighted_fish_metrics_tracks_garbage_probability():
+    expected, probability, contribution = weighted_fish_metrics([1, 9])
+    assert expected == pytest.approx(8.2)
+    assert probability == pytest.approx(0.1)
+    assert contribution == pytest.approx(0.1)
+
+
+def test_garbage_reduction_models_one_reroll():
+    result = expected_fishing_return(
+        [1, 0, 0, 0, 0, 0],
+        {1: [1, 9]},
+        FishingScenario(success_rate=1, garbage_reduction=1),
+    )
+    # 8.2 + 10% * (8.2 - 1.0)
+    assert result["expected_base_value_on_success"] == pytest.approx(8.92)
 
 
 def test_expected_fishing_return_combines_runtime_multipliers():

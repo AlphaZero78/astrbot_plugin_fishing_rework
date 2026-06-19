@@ -18,6 +18,7 @@ class FishingScenario:
     fishing_cost: int = 0
     consumable_cost: float = 0.0
     cooldown_seconds: float = 180.0
+    garbage_reduction: float = 0.0
 
 
 @dataclass(frozen=True)
@@ -91,6 +92,36 @@ def weighted_fish_value(
     return sum(value * weight for value, weight in zip(values, weights)) / total_weight
 
 
+def weighted_fish_metrics(
+    base_values: Iterable[float],
+    value_weight_exponent: float = 1.0,
+    garbage_threshold: float = 5.0,
+) -> tuple[float, float, float]:
+    """Return expected value, garbage probability, and garbage contribution."""
+    values = [max(float(value), 0.0) for value in base_values]
+    if not values:
+        raise ValueError("base_values cannot be empty")
+    exponent = max(float(value_weight_exponent), 0.0)
+    weights = [max(value, 1.0) ** exponent for value in values]
+    total_weight = sum(weights)
+    expected = sum(value * weight for value, weight in zip(values, weights))
+    garbage_weight = sum(
+        weight
+        for value, weight in zip(values, weights)
+        if value < garbage_threshold
+    )
+    garbage_contribution = sum(
+        value * weight
+        for value, weight in zip(values, weights)
+        if value < garbage_threshold
+    )
+    return (
+        expected / total_weight,
+        garbage_weight / total_weight,
+        garbage_contribution / total_weight,
+    )
+
+
 def expected_fishing_return(
     distribution: Sequence[float],
     fish_values_by_rarity: Mapping[int, Sequence[float]],
@@ -100,11 +131,11 @@ def expected_fishing_return(
 ) -> dict[str, float]:
     """Calculate expected gross and net coin return for one fishing command."""
     adjusted = apply_rare_bonus(distribution, scenario.rare_bonus)
-    rarity_values: dict[int, float] = {}
+    rarity_metrics: dict[int, tuple[float, float, float]] = {}
     for rarity in range(1, 6):
         values = fish_values_by_rarity.get(rarity, ())
         if values:
-            rarity_values[rarity] = weighted_fish_value(
+            rarity_metrics[rarity] = weighted_fish_metrics(
                 values, value_weight_exponent
             )
 
@@ -123,27 +154,45 @@ def expected_fishing_return(
             if sum(high_weights.values()) <= 0:
                 raise ValueError("high rarity weights must contain a positive value")
         high_total = sum(high_weights.values())
-        rarity_values[6] = sum(
-            weighted_fish_value(
-                fish_values_by_rarity[rarity], value_weight_exponent
+        rarity_metrics[6] = tuple(
+            sum(
+                weighted_fish_metrics(
+                    fish_values_by_rarity[rarity], value_weight_exponent
+                )[metric_index]
+                * high_weights[rarity]
+                / high_total
+                for rarity in high_rarities
             )
-            * high_weights[rarity]
-            / high_total
-            for rarity in high_rarities
+            for metric_index in range(3)
         )
 
     missing = [
         bucket + 1
         for bucket, probability in enumerate(adjusted)
-        if probability > 0 and bucket + 1 not in rarity_values
+        if probability > 0 and bucket + 1 not in rarity_metrics
     ]
     if missing:
         raise ValueError(f"missing fish values for rarity buckets: {missing}")
 
     expected_base_value = sum(
-        probability * rarity_values[index + 1]
+        probability * rarity_metrics[index + 1][0]
         for index, probability in enumerate(adjusted)
         if probability > 0
+    )
+    garbage_probability = sum(
+        probability * rarity_metrics[index + 1][1]
+        for index, probability in enumerate(adjusted)
+        if probability > 0
+    )
+    garbage_value_contribution = sum(
+        probability * rarity_metrics[index + 1][2]
+        for index, probability in enumerate(adjusted)
+        if probability > 0
+    )
+    garbage_reduction = clamp_probability(scenario.garbage_reduction)
+    expected_base_value += garbage_reduction * (
+        garbage_probability * expected_base_value
+        - garbage_value_contribution
     )
     quality_chance = quality_bonus_chance(
         scenario.quality_modifier, scenario.quality_bonus_cap
@@ -169,6 +218,7 @@ def expected_fishing_return(
     return {
         "expected_base_value_on_success": expected_base_value,
         "quality_bonus_chance": quality_chance,
+        "garbage_probability": garbage_probability,
         "expected_catches": success_rate * quantity,
         "gross_value": gross,
         "cost": cost,
