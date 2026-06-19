@@ -13,3 +13,4 @@ __pycache__/
 .idea/
 
 *.db
+tests/test_*_output.png

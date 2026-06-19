@@ -85,7 +85,7 @@ def test_font_selection_for_char():
     print("  [OK] 测试通过\n")
 
 
-def test_draw_text_smart_with_keikaku():
+def test_draw_text_smart_with_keikaku(tmp_path):
     """测试绘制"計画通り"文本（完全模拟 state.py 的逻辑）"""
     print("测试4: 绘制'計画通り'文本...")
     font_path = os.path.join(os.path.dirname(__file__), "..", "draw", "resource", "DouyinSansBold.otf")
@@ -113,7 +113,7 @@ def test_draw_text_smart_with_keikaku():
     )
     
     # 保存图片
-    output_path = os.path.join(os.path.dirname(__file__), "test_keikaku_output.png")
+    output_path = tmp_path / "test_keikaku_output.png"
     image.save(output_path)
     print(f"  图片已保存到: {output_path}")
     
@@ -206,7 +206,7 @@ def test_font_fallback_for_specific_char():
     print("  [OK] 测试通过\n")
 
 
-def test_state_panel_title_rendering():
+def test_state_panel_title_rendering(tmp_path):
     """完全模拟 state.py 中称号绘制的逻辑"""
     print("测试7: 模拟state.py中称号绘制逻辑...")
     font_path = os.path.join(os.path.dirname(__file__), "..", "draw", "resource", "DouyinSansBold.otf")
@@ -257,7 +257,7 @@ def test_state_panel_title_rendering():
         )
         
         # 保存图片
-        output_path = os.path.join(os.path.dirname(__file__), "test_state_panel_output.png")
+        output_path = tmp_path / "test_state_panel_output.png"
         image.save(output_path)
         print(f"  图片已保存到: {output_path}")
         
@@ -282,7 +282,7 @@ def test_state_panel_title_rendering():
     print("  [OK] 测试通过\n")
 
 
-def test_man_tu_jian_title():
+def test_man_tu_jian_title(tmp_path):
     """测试'满图鉴了'称号"""
     print("测试8: 测试'满图鉴了'称号...")
     font_path = os.path.join(os.path.dirname(__file__), "..", "draw", "resource", "DouyinSansBold.otf")
@@ -333,7 +333,7 @@ def test_man_tu_jian_title():
         )
         
         # 保存图片
-        output_path = os.path.join(os.path.dirname(__file__), "test_man_tu_jian_output.png")
+        output_path = tmp_path / "test_man_tu_jian_output.png"
         image.save(output_path)
         print(f"  图片已保存到: {output_path}")
         
