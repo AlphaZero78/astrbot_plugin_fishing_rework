@@ -176,9 +176,10 @@ TITLE_DATA = [
     (19, "虚空渔夫", "钓到最深之鱼", "{username}, 虚空渔夫"),
 ]
 
-GACHA_POOL = [(4, '标准寻访', '', 10, 0, False, None),
- (5, '【限定】开服庆典寻访', '', 1000, 0, True, '2026-06-21T12:00'),
- (6, '【限定】开服庆典申领', '', 1000, 0, True, '2026-06-21T12:00')]
+GACHA_POOL = [(4, '标准寻访', '低成本常驻补给，期望回收接近抽取成本。', 10, 0, False, None),
+ (5, '【限定】开服庆典寻访', '鱼竿与鱼饵限定池，按目录价值平衡。', 1250, 0, True, '2026-06-21T12:00'),
+ (6, '【限定】开服庆典申领', '饰品与鱼饵限定池，按出售基准与实用价值平衡。', 700, 0, True, '2026-06-21T12:00'),
+ (7, '高级物资调度', '高阶装备、鱼饵与功能道具常驻池。', 13000, 0, False, None)]
 
 # ??: (gacha_pool_id, item_type, item_id, quantity, weight)
 GACHA_POOL_ITEM_DATA = [(4, 'coins', 0, 1, 1000),
@@ -206,7 +207,21 @@ GACHA_POOL_ITEM_DATA = [(4, 'coins', 0, 1, 1000),
  (6, 'accessory', 4, 1, 1),
  (6, 'accessory', 2, 1, 20),
  (6, 'accessory', 1, 1, 30),
- (6, 'bait', 14, 1, 5)]
+ (6, 'bait', 14, 1, 5),
+ (7, 'rod', 6, 1, 1),
+ (7, 'accessory', 5, 1, 1),
+ (7, 'accessory', 6, 1, 1),
+ (7, 'accessory', 7, 1, 1),
+ (7, 'rod', 5, 1, 8),
+ (7, 'accessory', 4, 1, 8),
+ (7, 'bait', 14, 5, 50),
+ (7, 'bait', 13, 10, 300),
+ (7, 'bait', 10, 10, 300),
+ (7, 'bait', 11, 10, 500),
+ (7, 'bait', 8, 50, 900),
+ (7, 'item', 2, 1, 50),
+ (7, 'item', 12, 1, 20),
+ (7, 'item', 15, 1, 100)]
 
 ITEM_DATA = [
     # Format: (item_id, name, description, rarity, effect_description, cost, is_consumable, icon_url, effect_type, effect_payload)
