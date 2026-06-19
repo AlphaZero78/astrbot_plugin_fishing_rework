@@ -20,6 +20,7 @@ GachaEntry = analytics.GachaEntry
 expected_fishing_return = analytics.expected_fishing_return
 expected_gacha_return = analytics.expected_gacha_return
 SELL_PRICE_BY_RARITY = game_config.SELL_PRICE_BY_RARITY
+DEFAULT_RARE_BONUS_CAP = game_config.DEFAULT_RARE_BONUS_CAP
 bait_cost_per_attempt = bait_mechanics.bait_cost_per_attempt
 
 
@@ -110,7 +111,9 @@ def analyze(database: Path) -> dict[str, list[dict[str, float | int | str]]]:
                     success_rate=min(0.7 + bait["success_rate_modifier"], 1.0),
                     quantity_modifier=bait["quantity_modifier"],
                     value_modifier=bait["value_modifier"],
-                    rare_bonus=min(bait["rare_chance_modifier"], 0.3),
+                    rare_bonus=min(
+                        bait["rare_chance_modifier"], DEFAULT_RARE_BONUS_CAP
+                    ),
                     fishing_cost=fishing_cost,
                     consumable_cost=bait_cost_per_attempt(bait, 180),
                     cooldown_seconds=180,
@@ -130,6 +133,91 @@ def analyze(database: Path) -> dict[str, list[dict[str, float | int | str]]]:
                         ),
                         "net_change": (
                             result["net_value"] - baseline["net_value"]
+                        ),
+                        **result,
+                    }
+                )
+
+        rods = []
+        accessories = []
+        equipment_zone_id = 4 if 4 in zone_inputs else next(iter(zone_inputs), None)
+        if equipment_zone_id is not None:
+            distribution, fish_values, fishing_cost = zone_inputs[equipment_zone_id]
+            baseline = expected_fishing_return(
+                distribution,
+                fish_values,
+                FishingScenario(
+                    fishing_cost=fishing_cost,
+                    cooldown_seconds=180,
+                ),
+            )
+            for rod in connection.execute("SELECT * FROM rods ORDER BY rarity, rod_id"):
+                result = expected_fishing_return(
+                    distribution,
+                    fish_values,
+                    FishingScenario(
+                        quantity_modifier=rod["bonus_fish_quantity_modifier"],
+                        quality_modifier=rod["bonus_fish_quality_modifier"],
+                        rare_bonus=min(
+                            rod["bonus_rare_fish_chance"],
+                            DEFAULT_RARE_BONUS_CAP,
+                        ),
+                        fishing_cost=fishing_cost,
+                        cooldown_seconds=180,
+                    ),
+                )
+                rods.append(
+                    {
+                        "id": rod["rod_id"],
+                        "name": rod["name"],
+                        "rarity": rod["rarity"],
+                        "gross_uplift": (
+                            result["gross_value"] / baseline["gross_value"] - 1
+                        ),
+                        "net_hour_uplift": (
+                            result["net_value_per_hour"]
+                            / baseline["net_value_per_hour"]
+                            - 1
+                        ),
+                        **result,
+                    }
+                )
+            for accessory in connection.execute(
+                "SELECT * FROM accessories ORDER BY rarity, accessory_id"
+            ):
+                result = expected_fishing_return(
+                    distribution,
+                    fish_values,
+                    FishingScenario(
+                        quantity_modifier=accessory[
+                            "bonus_fish_quantity_modifier"
+                        ],
+                        value_modifier=accessory["bonus_coin_modifier"],
+                        quality_modifier=accessory[
+                            "bonus_fish_quality_modifier"
+                        ],
+                        rare_bonus=min(
+                            accessory["bonus_rare_fish_chance"],
+                            DEFAULT_RARE_BONUS_CAP,
+                        ),
+                        fishing_cost=fishing_cost,
+                        cooldown_seconds=(
+                            180 * accessory["fishing_cooldown_modifier"]
+                        ),
+                    ),
+                )
+                accessories.append(
+                    {
+                        "id": accessory["accessory_id"],
+                        "name": accessory["name"],
+                        "rarity": accessory["rarity"],
+                        "gross_uplift": (
+                            result["gross_value"] / baseline["gross_value"] - 1
+                        ),
+                        "net_hour_uplift": (
+                            result["net_value_per_hour"]
+                            / baseline["net_value_per_hour"]
+                            - 1
                         ),
                         **result,
                     }
@@ -167,7 +255,13 @@ def analyze(database: Path) -> dict[str, list[dict[str, float | int | str]]]:
                     **result,
                 }
             )
-        return {"zones": zones, "baits": baits, "gacha_pools": pools}
+        return {
+            "zones": zones,
+            "baits": baits,
+            "rods": rods,
+            "accessories": accessories,
+            "gacha_pools": pools,
+        }
     finally:
         connection.close()
 
@@ -199,6 +293,20 @@ def main() -> int:
             f"| uplift={row['gross_uplift']:.1%} "
             f"| cost/attempt={row['cost_per_attempt']:.2f} "
             f"| net change={row['net_change']:.2f}"
+        )
+    print("\nRods (zone 4 baseline)")
+    for row in report["rods"]:
+        print(
+            f"{row['id']}: {row['name']} | rarity={row['rarity']} "
+            f"| gross uplift={row['gross_uplift']:.1%} "
+            f"| net/hour uplift={row['net_hour_uplift']:.1%}"
+        )
+    print("\nAccessories (zone 4 baseline)")
+    for row in report["accessories"]:
+        print(
+            f"{row['id']}: {row['name']} | rarity={row['rarity']} "
+            f"| gross uplift={row['gross_uplift']:.1%} "
+            f"| net/hour uplift={row['net_hour_uplift']:.1%}"
         )
     print("\nGacha pools")
     for row in report["gacha_pools"]:

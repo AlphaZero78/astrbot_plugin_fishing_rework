@@ -65,6 +65,8 @@ REFINE_MULTIPLIERS = {
     "10": 660.0,
 }
 
+DEFAULT_RARE_BONUS_CAP = 0.50
+
 
 def _mapping(value: Any) -> Mapping[str, Any]:
     return value if isinstance(value, Mapping) else {}
@@ -102,7 +104,9 @@ def build_game_config(config: Mapping[str, Any]) -> dict[str, Any]:
             "cooldown_seconds": fishing.get("cooldown_seconds", 180),
         },
         "quality_bonus_max_chance": fishing.get("quality_bonus_max_chance", 0.35),
-        "rare_bonus_max_chance": fishing.get("rare_bonus_max_chance", 0.30),
+        "rare_bonus_max_chance": fishing.get(
+            "rare_bonus_max_chance", DEFAULT_RARE_BONUS_CAP
+        ),
         "steal": {
             "cooldown_seconds": steal.get("cooldown_seconds", 14400),
         },
