@@ -1,9 +1,21 @@
 import sqlite3
 import os
 import re
-import importlib
+import importlib.util
 
 from astrbot.api import logger
+
+
+def load_migration_module(migrations_dir: str, filename: str):
+    """Load a migration from its file path, independent of plugin package name."""
+    module_path = os.path.join(migrations_dir, filename)
+    module_name = f"_fishing_migration_{filename[:-3]}"
+    spec = importlib.util.spec_from_file_location(module_name, module_path)
+    if spec is None or spec.loader is None:
+        raise ImportError(f"无法加载迁移脚本: {module_path}")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
 
 def get_current_version(cursor: sqlite3.Cursor) -> int:
     """获取当前数据库的版本号。"""
@@ -54,8 +66,8 @@ def run_migrations(db_path: str, migrations_dir: str):
         if version > current_version:
             logger.info(f"正在应用迁移脚本: {filename}...")
             try:
-                module_name = f"data.plugins.astrbot_plugin_fishing.core.database.migrations.{filename[:-3]}"
-                migration_module = importlib.import_module(module_name)
+                module_name = os.path.join(migrations_dir, filename)
+                migration_module = load_migration_module(migrations_dir, filename)
 
                 with sqlite3.connect(db_path) as conn:
                     conn.row_factory = sqlite3.Row

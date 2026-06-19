@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import importlib
 import json
 from pathlib import Path
 import sqlite3
@@ -11,15 +12,13 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(REPO_ROOT.parent) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT.parent))
 
-from astrbot_plugin_fishing_rework.core.analytics import (  # noqa: E402
-    FishingScenario,
-    GachaEntry,
-    expected_fishing_return,
-    expected_gacha_return,
-)
-from astrbot_plugin_fishing_rework.core.config.game_config import (  # noqa: E402
-    SELL_PRICE_BY_RARITY,
-)
+analytics = importlib.import_module(f"{REPO_ROOT.name}.core.analytics")
+game_config = importlib.import_module(f"{REPO_ROOT.name}.core.config.game_config")
+FishingScenario = analytics.FishingScenario
+GachaEntry = analytics.GachaEntry
+expected_fishing_return = analytics.expected_fishing_return
+expected_gacha_return = analytics.expected_gacha_return
+SELL_PRICE_BY_RARITY = game_config.SELL_PRICE_BY_RARITY
 
 
 def load_fish_values(
