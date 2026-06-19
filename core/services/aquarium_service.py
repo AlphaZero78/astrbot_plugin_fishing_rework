@@ -3,6 +3,7 @@ from datetime import datetime
 
 from ..repositories.abstract_repository import AbstractInventoryRepository, AbstractUserRepository, AbstractItemTemplateRepository
 from ..domain.models import User, UserAquariumItem, AquariumUpgrade, Fish
+from ..economy import fish_stack_unit_value
 
 
 class AquariumService:
@@ -31,7 +32,7 @@ class AquariumService:
         for item in aquarium_items:
             if fish_template := self.item_template_repo.get_fish_by_id(item.fish_id):
                 # 计算实际价值（高品质鱼双倍价值）
-                actual_value = fish_template.base_value * (1 + item.quality_level)
+                actual_value = fish_stack_unit_value(fish_template.base_value, item)
                 enriched_items.append({
                     "fish_id": item.fish_id,
                     "name": fish_template.name,
@@ -84,7 +85,9 @@ class AquariumService:
 
         # 从鱼塘移除鱼，添加到水族箱（保持品质）
         self.inventory_repo.update_fish_quantity(user_id, fish_id, -quantity, quality_level)
-        self.inventory_repo.add_fish_to_aquarium(user_id, fish_id, quantity, quality_level)
+        self.inventory_repo.add_fish_to_aquarium(
+            user_id, fish_id, quantity, quality_level, fish_item.unit_value
+        )
 
         quality_label = "✨高品质" if quality_level == 1 else "普通"
         return {
@@ -113,7 +116,9 @@ class AquariumService:
 
         # 从水族箱移除鱼，添加到鱼塘（保持品质）
         self.inventory_repo.remove_fish_from_aquarium(user_id, fish_id, quantity, quality_level)
-        self.inventory_repo.add_fish_to_inventory(user_id, fish_id, quantity, quality_level)
+        self.inventory_repo.add_fish_to_inventory(
+            user_id, fish_id, quantity, quality_level, fish_item.unit_value
+        )
 
         quality_label = "✨高品质" if quality_level == 1 else "普通"
         return {

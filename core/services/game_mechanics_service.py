@@ -15,6 +15,7 @@ from ..repositories.abstract_repository import (
 )
 from ..domain.models import WipeBombLog, User
 from ...core.utils import get_now, get_today
+from ..economy import fish_stack_unit_value
 
 if TYPE_CHECKING:
     from ..repositories.sqlite_user_repo import SqliteUserRepository
@@ -657,7 +658,13 @@ class GameMechanicsService:
 
         # 4. 执行偷窃事务（保持品质属性）
         self.inventory_repo.update_fish_quantity(victim_id, stolen_fish_item.fish_id, delta=-1, quality_level=stolen_fish_item.quality_level)
-        self.inventory_repo.add_fish_to_inventory(thief_id, stolen_fish_item.fish_id, quantity=1, quality_level=stolen_fish_item.quality_level)
+        self.inventory_repo.add_fish_to_inventory(
+            thief_id,
+            stolen_fish_item.fish_id,
+            quantity=1,
+            quality_level=stolen_fish_item.quality_level,
+            unit_value=stolen_fish_item.unit_value,
+        )
 
         # 5. 更新偷窃者的CD时间
         thief.last_steal_time = now
@@ -673,10 +680,11 @@ class GameMechanicsService:
 
         # 构建品质信息
         quality_info = ""
-        actual_value = stolen_fish_template.base_value
+        actual_value = fish_stack_unit_value(
+            stolen_fish_template.base_value, stolen_fish_item
+        )
         if stolen_fish_item.quality_level == 1:
             quality_info = "（✨高品质）"
-            actual_value = stolen_fish_template.base_value * 2
         
         return {
             "success": True,
@@ -820,7 +828,12 @@ class GameMechanicsService:
         }
         all_fish_in_pond = []
         for item in victim_inventory:
-            all_fish_in_pond.extend([item.fish_id] * item.quantity)
+            stack_key = (
+                item.fish_id,
+                item.quality_level,
+                item.unit_value,
+            )
+            all_fish_in_pond.extend([stack_key] * item.quantity)
 
         # 6. 决定偷取数量并进行初次完全随机抽样
         num_to_steal = 0
@@ -844,12 +857,13 @@ class GameMechanicsService:
         # 7. 检查并修正高星鱼数量
         high_rarity_caught = []
         low_rarity_caught = []
-        for fish_id in initial_catch:
+        for stack_key in initial_catch:
+            fish_id = stack_key[0]
             template = fish_templates.get(fish_id)
             if template and template.rarity >= 5:
-                high_rarity_caught.append(fish_id)
+                high_rarity_caught.append(stack_key)
             else:
-                low_rarity_caught.append(fish_id)
+                low_rarity_caught.append(stack_key)
         
         final_stolen_fish_ids = []
         if len(high_rarity_caught) <= 1:
@@ -867,11 +881,12 @@ class GameMechanicsService:
             pond_counts.subtract(initial_catch_counts)
 
             replacement_pool = []
-            for fish_id, count in pond_counts.items():
+            for stack_key, count in pond_counts.items():
                 if count > 0:
+                    fish_id = stack_key[0]
                     template = fish_templates.get(fish_id)
                     if template and template.rarity < 5:
-                        replacement_pool.extend([fish_id] * count)
+                        replacement_pool.extend([stack_key] * count)
             
             if replacement_pool:
                 num_can_replace = min(num_to_replace, len(replacement_pool))
@@ -879,22 +894,38 @@ class GameMechanicsService:
                 final_stolen_fish_ids.extend(replacements)
 
         # 8. 统计最终偷到的鱼
-        stolen_fish_counts = {}
-        for fish_id in final_stolen_fish_ids:
-            stolen_fish_counts[fish_id] = stolen_fish_counts.get(fish_id, 0) + 1
+        from collections import Counter
+        stolen_fish_counts = Counter(final_stolen_fish_ids)
     
         # 9. 执行电鱼事务并计算总价值
         stolen_summary = []
         total_value_stolen = 0
     
-        for fish_id, count in stolen_fish_counts.items():
-            self.inventory_repo.update_fish_quantity(victim_id, fish_id, delta=-count, quality_level=0)
-            self.inventory_repo.add_fish_to_inventory(thief_id, fish_id, quantity=count, quality_level=0)
+        for (fish_id, quality_level, unit_value), count in stolen_fish_counts.items():
+            self.inventory_repo.update_fish_quantity(
+                victim_id,
+                fish_id,
+                delta=-count,
+                quality_level=quality_level,
+            )
+            self.inventory_repo.add_fish_to_inventory(
+                thief_id,
+                fish_id,
+                quantity=count,
+                quality_level=quality_level,
+                unit_value=unit_value,
+            )
             
             template = fish_templates.get(fish_id)
             if template:
-                stolen_summary.append(f"【{template.name}】x{count}")
-                total_value_stolen += template.base_value * count
+                quality_text = "（✨高品质）" if quality_level == 1 else ""
+                stolen_summary.append(f"【{template.name}】{quality_text}x{count}")
+                unit_sale_value = (
+                    float(unit_value)
+                    if unit_value is not None
+                    else float(template.base_value)
+                ) * (1 + quality_level)
+                total_value_stolen += int(round(unit_sale_value * count))
     
         # 10. 更新电鱼的CD时间并保存
         thief.last_electric_fish_time = now

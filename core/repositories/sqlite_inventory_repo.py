@@ -35,7 +35,8 @@ class SqliteInventoryRepository(AbstractInventoryRepository):
             user_id=row['user_id'],
             fish_id=row['fish_id'],
             quality_level=row['quality_level'],
-            quantity=row['quantity']
+            quantity=row['quantity'],
+            unit_value=row['unit_value'] if 'unit_value' in row.keys() else None,
         )
 
     def _row_to_aquarium_item(self, row: sqlite3.Row) -> Optional[UserAquariumItem]:
@@ -46,7 +47,8 @@ class SqliteInventoryRepository(AbstractInventoryRepository):
             fish_id=row['fish_id'],
             quality_level=row['quality_level'],
             quantity=row['quantity'],
-            added_at=row['added_at']
+            added_at=row['added_at'],
+            unit_value=row['unit_value'] if 'unit_value' in row.keys() else None,
         )
 
     def _row_to_aquarium_upgrade(self, row: sqlite3.Row) -> Optional[AquariumUpgrade]:
@@ -85,12 +87,16 @@ class SqliteInventoryRepository(AbstractInventoryRepository):
     def get_fish_inventory(self, user_id: str) -> List[UserFishInventoryItem]:
         with self._connection_manager.get_connection() as conn:
             cursor = conn.cursor()
-            cursor.execute("SELECT user_id, fish_id, quality_level, quantity FROM user_fish_inventory WHERE user_id = ? AND quantity > 0", (user_id,))
+            cursor.execute("SELECT user_id, fish_id, quality_level, quantity, unit_value FROM user_fish_inventory WHERE user_id = ? AND quantity > 0", (user_id,))
             return [self._row_to_fish_item(row) for row in cursor.fetchall()]
 
     def get_fish_inventory_value(self, user_id: str, rarity: Optional[int] = None) -> int:
         query = """
-            SELECT SUM(f.base_value * ufi.quantity * (1 + ufi.quality_level))
+            SELECT ROUND(SUM(
+                COALESCE(ufi.unit_value, f.base_value)
+                * ufi.quantity
+                * (1 + ufi.quality_level)
+            ))
             FROM user_fish_inventory ufi
             JOIN fish f ON ufi.fish_id = f.fish_id
             WHERE ufi.user_id = ?
@@ -106,14 +112,28 @@ class SqliteInventoryRepository(AbstractInventoryRepository):
             result = cursor.fetchone()
             return result[0] if result and result[0] is not None else 0
 
-    def add_fish_to_inventory(self, user_id: str, fish_id: int, quantity: int = 1, quality_level: int = 0) -> None:
+    def add_fish_to_inventory(self, user_id: str, fish_id: int, quantity: int = 1, quality_level: int = 0, unit_value: Optional[float] = None) -> None:
+        if quantity <= 0:
+            return
         with self._connection_manager.get_connection() as conn:
             cursor = conn.cursor()
             cursor.execute("""
-                INSERT INTO user_fish_inventory (user_id, fish_id, quality_level, quantity)
-                VALUES (?, ?, ?, ?)
-                ON CONFLICT(user_id, fish_id, quality_level) DO UPDATE SET quantity = quantity + excluded.quantity
-            """, (user_id, fish_id, quality_level, quantity))
+                INSERT INTO user_fish_inventory (
+                    user_id, fish_id, quality_level, quantity, unit_value
+                )
+                VALUES (
+                    ?, ?, ?, ?,
+                    COALESCE(?, (SELECT base_value FROM fish WHERE fish_id = ?))
+                )
+                ON CONFLICT(user_id, fish_id, quality_level) DO UPDATE SET
+                    unit_value = (
+                        COALESCE(user_fish_inventory.unit_value, (
+                            SELECT base_value FROM fish WHERE fish_id = excluded.fish_id
+                        )) * user_fish_inventory.quantity
+                        + excluded.unit_value * excluded.quantity
+                    ) / (user_fish_inventory.quantity + excluded.quantity),
+                    quantity = user_fish_inventory.quantity + excluded.quantity
+            """, (user_id, fish_id, quality_level, quantity, unit_value, fish_id))
             conn.commit()
 
     def clear_fish_inventory(self, user_id: str, rarity: Optional[int] = None) -> None:
@@ -144,7 +164,9 @@ class SqliteInventoryRepository(AbstractInventoryRepository):
             try:
                 # 查询所有数量大于1的鱼及其价值
                 cursor.execute("""
-                    SELECT ufi.fish_id, ufi.quantity, f.base_value, f.name
+                    SELECT ufi.fish_id, ufi.quality_level, ufi.quantity,
+                           COALESCE(ufi.unit_value, f.base_value) AS unit_value,
+                           f.name
                     FROM user_fish_inventory ufi
                     JOIN fish f ON ufi.fish_id = f.fish_id
                     WHERE ufi.user_id = ? AND ufi.quantity > 1
@@ -158,7 +180,9 @@ class SqliteInventoryRepository(AbstractInventoryRepository):
 
                 for item in items_to_sell:
                     sell_qty = item["quantity"] - 1
-                    sold_value += sell_qty * item["base_value"]
+                    sold_value += int(round(
+                        sell_qty * item["unit_value"] * (1 + item["quality_level"])
+                    ))
 
                 # 将所有数量大于1的鱼更新为1
                 cursor.execute("""
@@ -418,13 +442,20 @@ class SqliteInventoryRepository(AbstractInventoryRepository):
             
     def update_fish_quantity(self, user_id: str, fish_id: int, delta: int, quality_level: int = 0) -> None:
         """更新用户鱼类库存中特定鱼的数量（可增可减），并确保数量不小于0。"""
+        if delta > 0:
+            self.add_fish_to_inventory(
+                user_id, fish_id, quantity=delta, quality_level=quality_level
+            )
+            return
+        if delta == 0:
+            return
         with self._connection_manager.get_connection() as conn:
             cursor = conn.cursor()
             cursor.execute("""
-                INSERT INTO user_fish_inventory (user_id, fish_id, quality_level, quantity)
-                VALUES (?, ?, ?, MAX(0, ?))
-                ON CONFLICT(user_id, fish_id, quality_level) DO UPDATE SET quantity = MAX(0, quantity + ?)
-            """, (user_id, fish_id, quality_level, delta, delta))
+                UPDATE user_fish_inventory
+                SET quantity = MAX(0, quantity + ?)
+                WHERE user_id = ? AND fish_id = ? AND quality_level = ?
+            """, (delta, user_id, fish_id, quality_level))
             # 删除数量为0的行，保持数据整洁
             cursor.execute("DELETE FROM user_fish_inventory WHERE user_id = ? AND quantity <= 0", (user_id,))
             conn.commit()
@@ -682,7 +713,7 @@ class SqliteInventoryRepository(AbstractInventoryRepository):
         with self._connection_manager.get_connection() as conn:
             cursor = conn.cursor()
             cursor.execute("""
-                SELECT user_id, fish_id, quality_level, quantity, added_at 
+                SELECT user_id, fish_id, quality_level, quantity, added_at, unit_value
                 FROM user_aquarium 
                 WHERE user_id = ? AND quantity > 0
             """, (user_id,))
@@ -691,7 +722,11 @@ class SqliteInventoryRepository(AbstractInventoryRepository):
     def get_aquarium_inventory_value(self, user_id: str, rarity: Optional[int] = None) -> int:
         """获取用户水族箱中鱼的总价值"""
         query = """
-            SELECT SUM(f.base_value * ua.quantity * (1 + ua.quality_level))
+            SELECT ROUND(SUM(
+                COALESCE(ua.unit_value, f.base_value)
+                * ua.quantity
+                * (1 + ua.quality_level)
+            ))
             FROM user_aquarium ua
             JOIN fish f ON ua.fish_id = f.fish_id
             WHERE ua.user_id = ?
@@ -707,16 +742,29 @@ class SqliteInventoryRepository(AbstractInventoryRepository):
             result = cursor.fetchone()
             return result[0] if result and result[0] is not None else 0
 
-    def add_fish_to_aquarium(self, user_id: str, fish_id: int, quantity: int = 1, quality_level: int = 0) -> None:
+    def add_fish_to_aquarium(self, user_id: str, fish_id: int, quantity: int = 1, quality_level: int = 0, unit_value: Optional[float] = None) -> None:
         """向用户水族箱添加鱼"""
+        if quantity <= 0:
+            return
         with self._connection_manager.get_connection() as conn:
             cursor = conn.cursor()
             cursor.execute("""
-                INSERT INTO user_aquarium (user_id, fish_id, quality_level, quantity, added_at)
-                VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP)
+                INSERT INTO user_aquarium (
+                    user_id, fish_id, quality_level, quantity, added_at, unit_value
+                )
+                VALUES (
+                    ?, ?, ?, ?, CURRENT_TIMESTAMP,
+                    COALESCE(?, (SELECT base_value FROM fish WHERE fish_id = ?))
+                )
                 ON CONFLICT(user_id, fish_id, quality_level) DO UPDATE SET 
-                    quantity = quantity + excluded.quantity
-            """, (user_id, fish_id, quality_level, quantity))
+                    unit_value = (
+                        COALESCE(user_aquarium.unit_value, (
+                            SELECT base_value FROM fish WHERE fish_id = excluded.fish_id
+                        )) * user_aquarium.quantity
+                        + excluded.unit_value * excluded.quantity
+                    ) / (user_aquarium.quantity + excluded.quantity),
+                    quantity = user_aquarium.quantity + excluded.quantity
+            """, (user_id, fish_id, quality_level, quantity, unit_value, fish_id))
             conn.commit()
 
     def remove_fish_from_aquarium(self, user_id: str, fish_id: int, quantity: int = 1, quality_level: int = 0) -> None:

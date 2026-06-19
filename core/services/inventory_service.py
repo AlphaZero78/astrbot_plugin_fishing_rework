@@ -10,6 +10,7 @@ from ..repositories.abstract_repository import (
 )
 from .effect_manager import EffectManager
 from ..utils import calculate_after_refine
+from ..economy import fish_stack_total_value, fish_stack_unit_value
 from .game_mechanics_service import GameMechanicsService
 
 
@@ -90,7 +91,7 @@ class InventoryService:
             fish_template = self.item_template_repo.get_fish_by_id(item.fish_id)
             if fish_template:
                 # 计算实际价值（高品质鱼双倍价值）
-                actual_value = fish_template.base_value * (1 + item.quality_level)
+                actual_value = fish_stack_unit_value(fish_template.base_value, item)
                 enriched_items.append({
                     "fish_id": item.fish_id,  # 添加fish_id字段
                     "name": fish_template.name,
@@ -267,7 +268,7 @@ class InventoryService:
             fish_template = self.item_template_repo.get_fish_by_id(item.fish_id)
             if fish_template:
                 # 高品质鱼按双倍价值计算
-                item_value = fish_template.base_value * item.quantity * (1 + item.quality_level)
+                item_value = fish_stack_total_value(fish_template.base_value, item)
                 total_value += item_value
                 
                 if item.quality_level == 1:
@@ -315,7 +316,7 @@ class InventoryService:
             fish_info = self.item_template_repo.get_fish_by_id(fish_id)
             if fish_info and fish_info.rarity == rarity:
                 # 计算鱼的总价值（高品质鱼双倍价值）
-                item_value = fish_info.base_value * item.quantity * (1 + item.quality_level)
+                item_value = fish_stack_total_value(fish_info.base_value, item)
                 total_value += item_value
                 
                 if item.quality_level == 1:
@@ -374,7 +375,7 @@ class InventoryService:
             fish_template = self.item_template_repo.get_fish_by_id(item.fish_id)
             if fish_template and fish_template.rarity in unique_rarities:
                 # 高品质鱼按双倍价值计算
-                value = fish_template.base_value * item.quantity * (1 + item.quality_level)
+                value = fish_stack_total_value(fish_template.base_value, item)
                 total_value += value
                 
                 # 累加售出详情
@@ -441,7 +442,7 @@ class InventoryService:
             fish_info = self.item_template_repo.get_fish_by_id(fish_id)
             if fish_info:
                 # 高品质鱼按双倍价值计算
-                fish_value = fish_info.base_value * item.quantity * (1 + item.quality_level)
+                fish_value = fish_stack_total_value(fish_info.base_value, item)
                 total_value += fish_value
                 sold_items["fish_count"] += item.quantity
                 sold_items["fish_value"] += fish_value

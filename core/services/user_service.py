@@ -13,6 +13,7 @@ from ..repositories.abstract_repository import (
 from .gacha_service import GachaService
 from ..domain.models import User, TaxRecord
 from ..utils import get_now, get_today
+from ..economy import fish_stack_unit_value
 
 
 class UserService:
@@ -723,7 +724,7 @@ class UserService:
                 fish_template = self.item_template_repo.get_fish_by_id(item.fish_id)
                 if fish_template:
                     # 计算实际价值（高品质鱼双倍价值）
-                    actual_value = fish_template.base_value * (1 + item.quality_level)
+                    actual_value = fish_stack_unit_value(fish_template.base_value, item)
                     fish_data.append({
                         "fish_id": item.fish_id,
                         "name": fish_template.name,

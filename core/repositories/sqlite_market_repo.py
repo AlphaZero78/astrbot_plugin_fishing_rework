@@ -95,6 +95,7 @@ class SqliteMarketRepository(AbstractMarketRepository):
             select_instance_id = "m.item_instance_id" if "item_instance_id" in cols else "NULL AS item_instance_id"
             select_is_anonymous = "m.is_anonymous" if "is_anonymous" in cols else "0 AS is_anonymous"
             select_quality_level = "m.quality_level" if "quality_level" in cols else "0 AS quality_level"
+            select_unit_value = "m.unit_value" if "unit_value" in cols else "NULL AS unit_value"
 
             query = f"""
                 SELECT
@@ -110,6 +111,7 @@ class SqliteMarketRepository(AbstractMarketRepository):
                     m.listed_at,
                     {select_is_anonymous},
                     {select_quality_level},
+                    {select_unit_value},
                     CASE
                         WHEN m.item_type = 'rod' THEN r.name
                         WHEN m.item_type = 'accessory' THEN a.name
@@ -159,6 +161,7 @@ class SqliteMarketRepository(AbstractMarketRepository):
             select_instance_id = "m.item_instance_id" if "item_instance_id" in cols else "NULL AS item_instance_id"
             select_is_anonymous = "m.is_anonymous" if "is_anonymous" in cols else "0 AS is_anonymous"
             select_quality_level = "m.quality_level" if "quality_level" in cols else "0 AS quality_level"
+            select_unit_value = "m.unit_value" if "unit_value" in cols else "NULL AS unit_value"
             
             # 构建WHERE条件
             where_conditions = []
@@ -222,6 +225,7 @@ class SqliteMarketRepository(AbstractMarketRepository):
                     m.listed_at,
                     {select_is_anonymous},
                     {select_quality_level},
+                    {select_unit_value},
                     CASE
                         WHEN m.item_type = 'rod' THEN r.name
                         WHEN m.item_type = 'accessory' THEN a.name
@@ -266,13 +270,51 @@ class SqliteMarketRepository(AbstractMarketRepository):
         """添加一个市场商品"""
         with self.db_manager.get_connection() as conn:
             cursor = conn.cursor()
+            listed_at = listing.listed_at or datetime.now()
+            if isinstance(listed_at, datetime):
+                listed_at = listed_at.isoformat()
+            expires_at = listing.expires_at
+            if isinstance(expires_at, datetime):
+                expires_at = expires_at.isoformat()
             
             # 检查表结构，确定哪些字段存在
             cursor.execute("PRAGMA table_info(market)")
             cols = [row[1] for row in cursor.fetchall()]
             
             # 构建动态的INSERT语句
-            if "is_anonymous" in cols and "item_instance_id" in cols and "quality_level" in cols:
+            if all(
+                column in cols
+                for column in (
+                    "is_anonymous",
+                    "item_instance_id",
+                    "quality_level",
+                    "unit_value",
+                )
+            ):
+                cursor.execute("""
+                    INSERT INTO market (
+                        user_id, item_type, item_id, item_name, item_description,
+                        quantity, price, listed_at, refine_level, is_anonymous,
+                        item_instance_id, quality_level, unit_value, expires_at
+                    )
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """, (
+                    listing.user_id,
+                    listing.item_type,
+                    listing.item_id,
+                    listing.item_name,
+                    listing.item_description,
+                    listing.quantity,
+                    listing.price,
+                    listed_at,
+                    listing.refine_level,
+                    listing.is_anonymous,
+                    listing.item_instance_id,
+                    getattr(listing, 'quality_level', 0),
+                    getattr(listing, 'unit_value', None),
+                    expires_at
+                ))
+            elif "is_anonymous" in cols and "item_instance_id" in cols and "quality_level" in cols:
                 # 新版本：包含所有字段
                 cursor.execute("""
                     INSERT INTO market (user_id, item_type, item_id, item_name, item_description, quantity, price, listed_at, refine_level, is_anonymous, item_instance_id, quality_level, expires_at)
@@ -285,12 +327,12 @@ class SqliteMarketRepository(AbstractMarketRepository):
                     listing.item_description,
                     listing.quantity,
                     listing.price,
-                    listing.listed_at or datetime.now(),
+                    listed_at,
                     listing.refine_level,
                     listing.is_anonymous,
                     listing.item_instance_id,
                     getattr(listing, 'quality_level', 0),
-                    listing.expires_at
+                    expires_at
                 ))
             elif "is_anonymous" in cols and "item_instance_id" in cols:
                 # 包含is_anonymous和item_instance_id，但不包含quality_level
@@ -305,11 +347,11 @@ class SqliteMarketRepository(AbstractMarketRepository):
                     listing.item_description,
                     listing.quantity,
                     listing.price,
-                    listing.listed_at or datetime.now(),
+                    listed_at,
                     listing.refine_level,
                     listing.is_anonymous,
                     listing.item_instance_id,
-                    listing.expires_at
+                    expires_at
                 ))
             elif "is_anonymous" in cols:
                 # 只有is_anonymous字段
@@ -324,10 +366,10 @@ class SqliteMarketRepository(AbstractMarketRepository):
                     listing.item_description,
                     listing.quantity,
                     listing.price,
-                    listing.listed_at or datetime.now(),
+                    listed_at,
                     listing.refine_level,
                     listing.is_anonymous,
-                    listing.expires_at
+                    expires_at
                 ))
             elif "item_instance_id" in cols:
                 # 只有item_instance_id字段
@@ -342,10 +384,10 @@ class SqliteMarketRepository(AbstractMarketRepository):
                     listing.item_description,
                     listing.quantity,
                     listing.price,
-                    listing.listed_at or datetime.now(),
+                    listed_at,
                     listing.refine_level,
                     listing.item_instance_id,
-                    listing.expires_at
+                    expires_at
                 ))
             else:
                 # 旧版本：不包含新字段
@@ -360,9 +402,9 @@ class SqliteMarketRepository(AbstractMarketRepository):
                     listing.item_description,
                     listing.quantity,
                     listing.price,
-                    listing.listed_at or datetime.now(),
+                    listed_at,
                     listing.refine_level,
-                    listing.expires_at
+                    expires_at
                 ))
             conn.commit()
 

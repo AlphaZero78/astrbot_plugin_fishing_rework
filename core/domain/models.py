@@ -269,6 +269,7 @@ class UserFishInventoryItem:
     fish_id: int
     quality_level: int  # 0=普通，1=高品质
     quantity: int
+    unit_value: Optional[float] = None
 
 @dataclass
 class UserAquariumItem:
@@ -278,6 +279,7 @@ class UserAquariumItem:
     quality_level: int  # 0=普通，1=高品质
     quantity: int
     added_at: Optional[datetime] = None
+    unit_value: Optional[float] = None
 
 @dataclass
 class AquariumUpgrade:
@@ -348,6 +350,7 @@ class MarketListing:
     item_instance_id: Optional[int] = None  # 实例ID，用于显示短码
     refine_level: int = 1
     quality_level: int = 0  # 品质等级（仅对鱼类有效，0=普通，1=高品质）
+    unit_value: Optional[float] = None  # 鱼类每条的普通品质基础售价
     expires_at: Optional[datetime] = None  # 腐败日期，主要用于大宗商品
     is_anonymous: bool = False  # 是否为匿名上架
 

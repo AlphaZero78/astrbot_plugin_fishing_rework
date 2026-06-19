@@ -177,6 +177,7 @@ class MarketService:
             "item_name": item_template.name if item_template else None,
             "item_description": item_template.description if item_template else None,
             "item_refine_level": 1,
+            "unit_value": fish_item.unit_value,
             "expires_at": None
         }
 
@@ -321,6 +322,11 @@ class MarketService:
             expires_at=validation_result["expires_at"],
             refine_level=validation_result["item_refine_level"],
             quality_level=quality_level if item_type == "fish" else 0,
+            unit_value=(
+                validation_result.get("unit_value")
+                if item_type == "fish"
+                else None
+            ),
             is_anonymous=is_anonymous
         )
         self.market_repo.add_listing(new_listing)
@@ -469,7 +475,13 @@ class MarketService:
                 # 给买家添加鱼类到水族箱（默认放入水族箱）
                 # 使用市场商品中设置的品质等级
                 quality_level = listing.quality_level
-                self.inventory_repo.add_fish_to_aquarium(buyer_id, listing.item_id, listing.quantity, quality_level)
+                self.inventory_repo.add_fish_to_aquarium(
+                    buyer_id,
+                    listing.item_id,
+                    listing.quantity,
+                    quality_level,
+                    listing.unit_value,
+                )
 
             # 4. 从市场移除该商品
             self.market_repo.remove_listing(market_id)
@@ -512,7 +524,13 @@ class MarketService:
         elif listing.item_type == "item":
             self.inventory_repo.update_item_quantity(listing.user_id, listing.item_id, listing.quantity)
         elif listing.item_type == "fish":
-            self.inventory_repo.add_fish_to_aquarium(listing.user_id, listing.item_id, listing.quantity, listing.quality_level)
+            self.inventory_repo.add_fish_to_aquarium(
+                listing.user_id,
+                listing.item_id,
+                listing.quantity,
+                listing.quality_level,
+                listing.unit_value,
+            )
         elif listing.item_type == "commodity":
             from ..domain.models import UserCommodity
             # 检查卖家交易所容量
