@@ -13,9 +13,14 @@ analysis therefore uses:
 - the real within-rarity fish selection weights
 - the real zone fish mappings
 
-The baseline target is roughly 2.50x gross return. Higher zones still produce
-much more net value per hour, while failed attempts and bait costs remain
-meaningful currency sinks.
+The baseline target is roughly 6x to 8x gross return, centered near 7x.
+Higher zones still produce much more net value per hour, while failed attempts
+and bait costs remain meaningful currency sinks.
+
+Base rods and accessories use a tier ladder: each higher rarity's shared
+attributes are approximately the previous rarity at refine level 5. The three
+6-star accessories share the 5-star refine-5 baseline and differ only in their
+quality, rarity, or quantity specialization.
 
 ## Gacha pools
 
@@ -23,12 +28,11 @@ Coins are valued at face value. Rods, baits, and general items use their
 catalog cost. Accessories use the configured rarity sale price because the
 schema has no purchase-cost column.
 
-Normal pools target about 0.75x to 0.80x catalog return. The remaining utility
-value comes from obtaining specific rare equipment rather than liquidating it.
+Pool prices are operator-controlled inputs rather than a fixed return target.
+At the current prices `13 / 1000 / 1000 / 20000`, catalog returns are roughly
+`0.75x / 1.20x / 0.65x / 0.59x`. Utility value can differ from catalog value
+because rare equipment may be worth more to a player than its liquidation
+price.
 
-## Known follow-up
-
-The runtime currently calculates catch value modifiers but the fish inventory
-does not persist the generated multiplier. Balance reports model the intended
-effect; persistence must be fixed before the new values are released to live
-instances.
+Generated catch value is persisted through pond, aquarium, market, steal, and
+electric-fishing inventory flows.
