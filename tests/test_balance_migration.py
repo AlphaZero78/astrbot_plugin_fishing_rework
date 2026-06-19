@@ -79,7 +79,7 @@ def test_balance_migration_sets_zone_and_pool_targets_idempotently():
     zones = connection.execute(
         "SELECT id, configs, fishing_cost FROM fishing_zones ORDER BY id"
     ).fetchall()
-    assert [row[2] for row in zones] == [25, 140, 2250, 5800]
+    assert [row[2] for row in zones] == [16, 89, 1425, 3660]
     assert json.loads(zones[2][1])["rarity_distribution"][-1] == 0.01
 
     costs = dict(
@@ -87,7 +87,7 @@ def test_balance_migration_sets_zone_and_pool_targets_idempotently():
             "SELECT gacha_pool_id, cost_coins FROM gacha_pools"
         ).fetchall()
     )
-    assert costs == {4: 10, 5: 1250, 6: 700, 7: 13000}
+    assert costs == {4: 13, 5: 1500, 6: 850, 7: 15000}
     assert connection.execute(
         "SELECT COUNT(*) FROM gacha_pool_items WHERE gacha_pool_id = 7"
     ).fetchone()[0] == 14

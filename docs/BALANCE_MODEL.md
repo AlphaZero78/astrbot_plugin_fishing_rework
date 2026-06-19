@@ -13,9 +13,9 @@ analysis therefore uses:
 - the real within-rarity fish selection weights
 - the real zone fish mappings
 
-The baseline target is roughly 1.55x to 1.60x gross return. Higher zones still
-produce much more net value per hour, but entering them requires enough liquid
-coins to absorb failed attempts.
+The baseline target is roughly 2.50x gross return. Higher zones still produce
+much more net value per hour, while failed attempts and bait costs remain
+meaningful currency sinks.
 
 ## Gacha pools
 
@@ -23,8 +23,8 @@ Coins are valued at face value. Rods, baits, and general items use their
 catalog cost. Accessories use the configured rarity sale price because the
 schema has no purchase-cost column.
 
-Normal pools target about 0.90x to 0.98x catalog return. This leaves a modest
-currency sink while preserving the utility value of rare equipment.
+Normal pools target about 0.75x to 0.80x catalog return. The remaining utility
+value comes from obtaining specific rare equipment rather than liquidating it.
 
 ## Known follow-up
 
