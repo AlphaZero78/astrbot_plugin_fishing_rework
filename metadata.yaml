@@ -1,6 +1,6 @@
-﻿name: astrbot_plugin_fishing
-display_name: Fishing Another!
-version: 2.4.8
-author: "xxlemon"
-description: "全新架构钓鱼插件！更多交互，多商店系统、交易所、品质系统、水族箱和Web管理（支持原版fishing存档继续游玩）"
-repo: https://github.com/xxlemon-io/astrbot_plugin_fishing
+name: astrbot_plugin_fishing_rework
+display_name: Fishing Rework
+version: 3.0.0
+author: "AlphaZero78"
+description: "独立维护的 AstrBot 多人钓鱼与经济系统，支持共享数据库、WebUI、数值分析和旧存档迁移。"
+repo: https://github.com/AlphaZero78/astrbot_plugin_fishing_rework
