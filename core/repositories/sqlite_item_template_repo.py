@@ -452,12 +452,20 @@ class SqliteItemTemplateRepository(AbstractItemTemplateRepository):
         with self._get_connection() as conn:
             cursor = conn.cursor()
             cursor.execute("""
-                INSERT INTO items (name, description, rarity, effect_description, cost, is_consumable, icon_url)
-                VALUES (:name, :description, :rarity, :effect_description, :cost, :is_consumable, :icon_url)
+                INSERT INTO items (
+                    name, description, rarity, effect_description, cost,
+                    is_consumable, icon_url, effect_type, effect_payload
+                )
+                VALUES (
+                    :name, :description, :rarity, :effect_description, :cost,
+                    :is_consumable, :icon_url, :effect_type, :effect_payload
+                )
             """, {
                 **data,
                 "is_consumable": 1 if "is_consumable" in data and data["is_consumable"] else 0,
-                "icon_url": data.get("icon_url")
+                "icon_url": data.get("icon_url"),
+                "effect_type": data.get("effect_type"),
+                "effect_payload": data.get("effect_payload"),
             })
             conn.commit()
 
@@ -469,12 +477,15 @@ class SqliteItemTemplateRepository(AbstractItemTemplateRepository):
                 UPDATE items SET
                     name = :name, description = :description, rarity = :rarity,
                     effect_description = :effect_description,
-                    cost = :cost, is_consumable = :is_consumable, icon_url = :icon_url
+                    cost = :cost, is_consumable = :is_consumable, icon_url = :icon_url,
+                    effect_type = :effect_type, effect_payload = :effect_payload
                 WHERE item_id = :item_id
             """, {
                 **data,
                 "is_consumable": 1 if "is_consumable" in data and data["is_consumable"] else 0,
-                "icon_url": data.get("icon_url")
+                "icon_url": data.get("icon_url"),
+                "effect_type": data.get("effect_type"),
+                "effect_payload": data.get("effect_payload"),
             })
             conn.commit()
 

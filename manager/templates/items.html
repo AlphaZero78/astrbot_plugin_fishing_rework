@@ -39,6 +39,8 @@
                             data-name="{{ item.name }}"
                             data-description="{{ item.description or '' }}"
                             data-effect-description="{{ item.effect_description or '' }}"
+                            data-effect-type="{{ item.effect_type or '' }}"
+                            data-effect-payload="{{ item.effect_payload or '' }}"
                             data-rarity="{{ item.rarity }}"
                             data-cost="{{ item.cost }}"
                             data-is-consumable="{{ 1 if item.is_consumable else 0 }}">
@@ -81,6 +83,30 @@
                     <div class="mb-3">
                         <label for="itemEffectDescription" class="form-label">效果描述</label>
                         <textarea class="form-control" id="itemEffectDescription" name="effect_description"></textarea>
+                    </div>
+
+                    <div class="mb-3">
+                        <label for="itemEffectType" class="form-label">实际效果类型</label>
+                        <input class="form-control" id="itemEffectType" name="effect_type" list="effectTypeOptions">
+                        <datalist id="effectTypeOptions">
+                            <option value="ADD_COINS">
+                            <option value="RARE_FISH_BOOST">
+                            <option value="RESET_FISHING_COOLDOWN">
+                            <option value="RESET_STEAL_COOLDOWN">
+                            <option value="WIPE_BOMB_ATTEMPTS_BOOST">
+                            <option value="REFINE_DESTRUCTION_SHIELD">
+                            <option value="STEAL_PROTECTION_BUFF">
+                            <option value="FORECAST_WIPE_BOMB">
+                            <option value="STEAL_PENETRATION_BUFF">
+                            <option value="STEAL_PROTECTION_REMOVAL">
+                            <option value="SHADOW_CLOAK_BUFF">
+                        </datalist>
+                        <div class="form-text">留空表示没有可主动执行的效果。</div>
+                    </div>
+
+                    <div class="mb-3">
+                        <label for="itemEffectPayload" class="form-label">实际效果参数（JSON 对象）</label>
+                        <textarea class="form-control font-monospace" id="itemEffectPayload" name="effect_payload" rows="4" placeholder='{"amount":1000}'></textarea>
                     </div>
                     
                     <div class="row">
@@ -137,6 +163,8 @@
         const name = data.name || '';
         const description = data.description || '';
         const effectDescription = data.effect_description || data.effectDescription || '';
+        const effectType = data.effect_type || data.effectType || '';
+        const effectPayload = data.effect_payload || data.effectPayload || '';
         const rarity = Number(data.rarity || 1);
         const cost = Number(data.cost || 0);
         const isConsumable = (data.isConsumable === '1' || data.isConsumable === 'true' || data.isConsumable === 'on');
@@ -147,6 +175,8 @@
         document.getElementById('itemName').value = name;
         document.getElementById('itemDescription').value = description;
         document.getElementById('itemEffectDescription').value = effectDescription;
+        document.getElementById('itemEffectType').value = effectType;
+        document.getElementById('itemEffectPayload').value = effectPayload;
         document.getElementById('itemRarity').value = rarity;
         document.getElementById('itemCost').value = cost;
         document.getElementById('isConsumable').checked = isConsumable;

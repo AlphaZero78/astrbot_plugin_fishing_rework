@@ -16,6 +16,8 @@ class FishingScenario:
     rare_bonus: float = 0.0
     quality_bonus_cap: float = 0.35
     fishing_cost: int = 0
+    consumable_cost: float = 0.0
+    cooldown_seconds: float = 180.0
 
 
 @dataclass(frozen=True)
@@ -157,8 +159,13 @@ def expected_fishing_return(
         * expected_quality_multiplier
         * expected_base_value
     )
-    cost = max(float(scenario.fishing_cost), 0.0)
+    cost = (
+        max(float(scenario.fishing_cost), 0.0)
+        + max(float(scenario.consumable_cost), 0.0)
+    )
     net = gross - cost
+    cooldown_seconds = max(float(scenario.cooldown_seconds), 0.0)
+    attempts_per_hour = 3600.0 / cooldown_seconds if cooldown_seconds > 0 else math.inf
     return {
         "expected_base_value_on_success": expected_base_value,
         "quality_bonus_chance": quality_chance,
@@ -167,6 +174,9 @@ def expected_fishing_return(
         "cost": cost,
         "net_value": net,
         "return_ratio": gross / cost if cost > 0 else math.inf,
+        "attempts_per_hour": attempts_per_hour,
+        "gross_value_per_hour": gross * attempts_per_hour,
+        "net_value_per_hour": net * attempts_per_hour,
     }
 
 

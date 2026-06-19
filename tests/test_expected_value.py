@@ -55,6 +55,8 @@ def test_expected_fishing_return_combines_runtime_multipliers():
     assert result["expected_catches"] == pytest.approx(1.2)
     assert result["gross_value"] == pytest.approx(33.6)
     assert result["net_value"] == pytest.approx(28.6)
+    assert result["attempts_per_hour"] == pytest.approx(20)
+    assert result["net_value_per_hour"] == pytest.approx(572)
 
 
 def test_expected_fishing_return_ignores_empty_zero_probability_buckets():

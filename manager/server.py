@@ -118,6 +118,30 @@ async def logout():
 async def index():
     return await render_template("index.html")
 
+@admin_bp.route("/settings", methods=["GET", "POST"])
+@login_required
+@admin_required
+async def manage_settings():
+    config_service = current_app.config["RUNTIME_CONFIG_SERVICE"]
+    if request.method == "POST":
+        try:
+            form = await request.form
+            result = config_service.update(form.to_dict())
+            if result["changed"]:
+                message = f"已更新 {len(result['changed'])} 项运行配置。"
+                if result["restart_required"]:
+                    message += " 数据存储路径变更将在重启插件后生效。"
+                await flash(message, "success")
+            else:
+                await flash("配置没有变化。", "info")
+        except (TypeError, ValueError) as exc:
+            await flash(f"配置保存失败：{exc}", "danger")
+        return redirect(url_for("admin_bp.manage_settings"))
+    return await render_template(
+        "settings.html",
+        sections=config_service.get_sections(),
+    )
+
 # --- 物品模板管理 (鱼、鱼竿、鱼饵、饰品) ---
 # 使用 item_template_service 来处理所有模板相关的CRUD操作
 

@@ -1,3 +1,4 @@
+import json
 from typing import Dict, Any, List, Optional
 from ..repositories.abstract_repository import AbstractItemTemplateRepository, AbstractGachaRepository
 from ..domain.models import Fish, Rod, Bait, Accessory, GachaPool, Item, Title
@@ -87,10 +88,29 @@ class ItemTemplateService:
         return self.item_template_repo.get_all_items()
 
     def add_item_template(self, data: Dict[str, Any]):
-        self.item_template_repo.add_item_template(data)
+        self.item_template_repo.add_item_template(self._normalize_item_effect(data))
 
     def update_item_template(self, item_id: int, data: Dict[str, Any]):
-        self.item_template_repo.update_item_template(item_id, data)
+        self.item_template_repo.update_item_template(
+            item_id, self._normalize_item_effect(data)
+        )
+
+    @staticmethod
+    def _normalize_item_effect(data: Dict[str, Any]) -> Dict[str, Any]:
+        normalized = dict(data)
+        effect_type = str(normalized.get("effect_type") or "").strip()
+        payload_text = str(normalized.get("effect_payload") or "").strip()
+        if payload_text:
+            payload = json.loads(payload_text)
+            if not isinstance(payload, dict):
+                raise ValueError("效果参数必须是 JSON 对象")
+            normalized["effect_payload"] = json.dumps(
+                payload, ensure_ascii=False, separators=(",", ":")
+            )
+        else:
+            normalized["effect_payload"] = None
+        normalized["effect_type"] = effect_type or None
+        return normalized
 
     def delete_item_template(self, item_id: int):
         self.item_template_repo.delete_item_template(item_id)

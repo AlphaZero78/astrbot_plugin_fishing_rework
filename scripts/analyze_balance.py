@@ -75,7 +75,10 @@ def analyze(database: Path) -> dict[str, list[dict[str, float | int | str]]]:
             result = expected_fishing_return(
                 distribution,
                 load_fish_values(connection, row["id"]),
-                FishingScenario(fishing_cost=row["fishing_cost"]),
+                FishingScenario(
+                    fishing_cost=row["fishing_cost"],
+                    cooldown_seconds=180,
+                ),
             )
             zones.append({"id": row["id"], "name": row["name"], **result})
 
@@ -133,7 +136,8 @@ def main() -> int:
     for row in report["zones"]:
         print(
             f"{row['id']}: {row['name']} | gross={row['gross_value']:.2f} "
-            f"net={row['net_value']:.2f} | return={row['return_ratio']:.2f}x"
+            f"net={row['net_value']:.2f} | return={row['return_ratio']:.2f}x "
+            f"| net/hour={row['net_value_per_hour']:.2f}"
         )
     print("\nGacha pools")
     for row in report["gacha_pools"]:

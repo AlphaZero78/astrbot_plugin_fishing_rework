@@ -1,0 +1,54 @@
+{% extends "layout.html" %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <div>
+        <h1><i class="fas fa-sliders-h"></i> 全局设置</h1>
+        <p class="text-muted mb-0">WebUI 自身的端口、密钥和开关仍由 AstrBot 配置页管理。</p>
+    </div>
+</div>
+
+<form method="post">
+    {% for section in sections %}
+    <div class="card shadow-sm mb-4">
+        <div class="card-header">
+            <strong>{{ section.label }}</strong>
+        </div>
+        <div class="card-body">
+            <div class="row">
+                {% for field in section.fields %}
+                <div class="col-lg-6 mb-3">
+                    <label class="form-label" for="{{ field.path }}">{{ field.label }}</label>
+                    {% if field.type == "bool" %}
+                    <select class="form-select" id="{{ field.path }}" name="{{ field.path }}">
+                        <option value="true" {% if field.value %}selected{% endif %}>启用</option>
+                        <option value="false" {% if not field.value %}selected{% endif %}>停用</option>
+                    </select>
+                    {% else %}
+                    <input
+                        class="form-control"
+                        id="{{ field.path }}"
+                        name="{{ field.path }}"
+                        type="{% if field.type in ['int', 'float'] %}number{% else %}text{% endif %}"
+                        value="{{ field.value }}"
+                        {% if field.type == "float" %}step="any"{% endif %}
+                        {% if field.min is not none %}min="{{ field.min }}"{% endif %}
+                        {% if field.max is not none %}max="{{ field.max }}"{% endif %}
+                    >
+                    {% endif %}
+                    <div class="form-text">
+                        <code>{{ field.path }}</code>{% if field.hint %} · {{ field.hint }}{% endif %}
+                    </div>
+                </div>
+                {% endfor %}
+            </div>
+        </div>
+    </div>
+    {% endfor %}
+    <div class="d-flex justify-content-end mb-5">
+        <button class="btn btn-primary btn-lg" type="submit">
+            <i class="fas fa-save"></i> 保存并应用
+        </button>
+    </div>
+</form>
+{% endblock %}

@@ -36,6 +36,7 @@ from .core.services.fishing_zone_service import FishingZoneService
 from .core.services.exchange_service import ExchangeService # 新增交易所Service
 from .core.services.sicbo_service import SicboService # 新增骰宝Service
 from .core.services.red_packet_service import RedPacketService # 新增红包Service
+from .core.services.runtime_config_service import RuntimeConfigService
 
 from .core.database.migration import run_migrations
 from .core.config import build_game_config
@@ -66,6 +67,7 @@ class FishingPlugin(Star):
 
         # --- 1. 加载配置 ---
         self.game_config = build_game_config(config)
+        self.raw_config = config
         self.is_tax = self.game_config["tax"]["is_tax"]
         
         # 插件ID
@@ -186,6 +188,12 @@ class FishingPlugin(Star):
         self.inventory_service.effect_manager = self.effect_manager
 
         self.item_template_service = ItemTemplateService(self.item_template_repo, self.gacha_repo)
+        self.runtime_config_service = RuntimeConfigService(
+            raw_config=config,
+            game_config=self.game_config,
+            schema_path=os.path.join(os.path.dirname(__file__), "_conf_schema.json"),
+            on_apply=self._apply_runtime_config,
+        )
 
         # --- 4. 启动后台任务 ---
         self.fishing_service.start_auto_fishing_task()
@@ -228,6 +236,19 @@ class FishingPlugin(Star):
         # 管理员扮演功能
         self.impersonation_map = {}
 
+    def _apply_runtime_config(self, game_config):
+        """Refresh values cached outside the shared game_config dictionary."""
+        tax_was_enabled = self.is_tax
+        self.is_tax = game_config["tax"]["is_tax"]
+        if hasattr(self, "fishing_service"):
+            self.fishing_service.daily_reset_hour = game_config["daily_reset_hour"]
+            if self.is_tax and not tax_was_enabled:
+                self.fishing_service.start_daily_tax_task()
+            elif tax_was_enabled and not self.is_tax:
+                self.fishing_service.stop_daily_tax_task()
+        if hasattr(self, "game_mechanics_service"):
+            self.game_mechanics_service.config = game_config
+
     async def _start_web_admin_server(self):
         """Start the Web admin server if it is not already running."""
         if self.web_admin_task and not self.web_admin_task.done():
@@ -254,6 +275,7 @@ class FishingPlugin(Star):
                 "fishing_zone_service": self.fishing_zone_service,
                 "shop_service": self.shop_service,
                 "exchange_service": self.exchange_service,
+                "runtime_config_service": self.runtime_config_service,
             }
             app = create_app(secret_key=self.secret_key, services=services_to_inject)
             server_config = Config()
