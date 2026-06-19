@@ -2,6 +2,7 @@ from ..repositories.abstract_repository import (
     AbstractItemTemplateRepository,
     AbstractGachaRepository,
     AbstractShopRepository,
+    AbstractInventoryRepository,
 )
 from ..initial_data import (
     FISH_DATA,
@@ -19,6 +20,7 @@ from ..initial_data import (
 )
 from ..domain.models import Item
 from astrbot.api import logger
+from ..config import build_default_zone_fish_mappings
 
 
 class DataSetupService:
@@ -29,6 +31,7 @@ class DataSetupService:
         item_template_repo: AbstractItemTemplateRepository,
         gacha_repo: AbstractGachaRepository,
         shop_repo: AbstractShopRepository,
+        inventory_repo: AbstractInventoryRepository,
     ):
         """
         初始化数据设置服务。
@@ -41,6 +44,7 @@ class DataSetupService:
         self.gacha_repo = gacha_repo
         self.item_template_repo = item_template_repo
         self.shop_repo = shop_repo
+        self.inventory_repo = inventory_repo
 
     def setup_initial_data(self):
         """
@@ -50,6 +54,7 @@ class DataSetupService:
         try:
             existing_fish = self.item_template_repo.get_all_fish()
             if existing_fish:
+                self._ensure_default_zone_fish_mappings(existing_fish)
                 logger.info("数据库核心数据已存在，跳过初始化。")
                 return
         except Exception as e:
@@ -87,6 +92,9 @@ class DataSetupService:
                 "quantity_modifier": bait[11],
                 "is_consumable": bait[12],
             })
+        self._ensure_default_zone_fish_mappings(
+            self.item_template_repo.get_all_fish()
+        )
 
         # 填充鱼竿数据
         for rod in ROD_DATA:
@@ -130,17 +138,20 @@ class DataSetupService:
                 })
 
         for pool in GACHA_POOL:
-            self.gacha_repo.add_pool_template(
-                {
-                    "pool_id": pool[0],
-                    "name": pool[1],
-                    "description": pool[2],
-                    "cost_coins": pool[3],
-                    "cost_premium_currency": pool[4],
-                    "is_limited_time": pool[5],
-                    "open_until": pool[6],
-                }
-            )
+            pool_data = {
+                "pool_id": pool[0],
+                "gacha_pool_id": pool[0],
+                "name": pool[1],
+                "description": pool[2],
+                "cost_coins": pool[3],
+                "cost_premium_currency": pool[4],
+                "is_limited_time": pool[5],
+                "open_until": pool[6],
+            }
+            if self.gacha_repo.get_pool_by_id(pool[0]):
+                self.gacha_repo.update_pool_template(pool[0], pool_data)
+            else:
+                self.gacha_repo.add_pool_template(pool_data)
 
         # 填充道具数据
         self.create_initial_items()
@@ -169,6 +180,23 @@ class DataSetupService:
             logger.info("初始商店与商品填充完成。")
 
         logger.info("核心游戏数据初始化完成。")
+
+    def _ensure_default_zone_fish_mappings(self, fishes):
+        """Populate only empty built-in zone mappings."""
+        mappings = build_default_zone_fish_mappings(fishes)
+        for zone_id, fish_ids in mappings.items():
+            try:
+                existing = self.inventory_repo.get_specific_fish_ids_for_zone(
+                    zone_id
+                )
+            except Exception:
+                continue
+            if existing or not fish_ids:
+                continue
+            self.inventory_repo.update_specific_fish_for_zone(zone_id, fish_ids)
+            logger.info(
+                f"已为区域 {zone_id} 初始化 {len(fish_ids)} 条鱼类映射"
+            )
 
     def sync_shops_from_initial_data(self):
         """
