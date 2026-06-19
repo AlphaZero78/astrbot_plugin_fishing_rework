@@ -6,6 +6,14 @@ from dataclasses import dataclass
 import math
 from typing import Iterable, Mapping, Sequence
 
+from ..mechanics import (
+    apply_rare_bonus,
+    clamp_probability,
+    expected_catch_count,
+    normalize_distribution,
+    quality_bonus_chance,
+)
+
 
 @dataclass(frozen=True)
 class FishingScenario:
@@ -27,54 +35,6 @@ class GachaEntry:
     item_id: int
     quantity: int
     weight: int
-
-
-def clamp_probability(value: float) -> float:
-    return max(0.0, min(float(value), 1.0))
-
-
-def normalize_distribution(distribution: Sequence[float]) -> list[float]:
-    values = [max(0.0, float(value)) for value in distribution]
-    total = sum(values)
-    if total <= 0:
-        raise ValueError("distribution must contain at least one positive weight")
-    return [value / total for value in values]
-
-
-def apply_rare_bonus(
-    distribution: Sequence[float],
-    rare_bonus: float,
-    cap: float = 0.8,
-) -> list[float]:
-    """Move a share of 1-3 star probability to 4-5 stars.
-
-    The 6+ bucket remains unchanged, matching FishingService.
-    """
-    if len(distribution) < 6:
-        raise ValueError("rarity distribution must contain six buckets")
-
-    adjusted = normalize_distribution(distribution)
-    boost = min(max(float(rare_bonus), 0.0), max(float(cap), 0.0))
-    low_total = sum(adjusted[:3])
-    rare_total = sum(adjusted[3:5])
-    if boost == 0 or low_total <= 0 or rare_total <= 0:
-        return adjusted
-
-    transfer = low_total * boost
-    for index in range(3):
-        adjusted[index] -= transfer * adjusted[index] / low_total
-    for index in range(3, 5):
-        adjusted[index] += transfer * adjusted[index] / rare_total
-    return normalize_distribution(adjusted)
-
-
-def quality_bonus_chance(quality_modifier: float, cap: float = 0.35) -> float:
-    """Return the chance that a catch receives the 2x quality sale value."""
-    modifier = max(float(quality_modifier), 0.0)
-    probability_cap = clamp_probability(cap)
-    if modifier <= 1.0 or probability_cap == 0:
-        return 0.0
-    return min(math.log2(modifier) * probability_cap / 2.0, probability_cap)
 
 
 def weighted_fish_value(
@@ -199,7 +159,7 @@ def expected_fishing_return(
     )
     expected_quality_multiplier = 1.0 + quality_chance
     success_rate = clamp_probability(scenario.success_rate)
-    quantity = max(float(scenario.quantity_modifier), 0.0)
+    quantity = expected_catch_count(scenario.quantity_modifier)
     value_modifier = max(float(scenario.value_modifier), 0.0)
     gross = (
         success_rate

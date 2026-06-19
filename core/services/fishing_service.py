@@ -1,5 +1,4 @@
 import json
-import math
 import os
 import random
 import sqlite3
@@ -20,7 +19,13 @@ from ..repositories.abstract_repository import (
 from ..domain.models import FishingRecord, TaxRecord, FishingZone
 from ..services.fishing_zone_service import FishingZoneService
 from ..utils import get_now, get_fish_template, get_today, get_last_reset_time, calculate_after_refine
-from ..mechanics import consumes_bait_per_attempt
+from ..mechanics import (
+    apply_rare_bonus,
+    clamp_probability,
+    consumes_bait_per_attempt,
+    quality_bonus_chance,
+    roll_catch_count,
+)
 
 
 class FishingService:
@@ -80,11 +85,7 @@ class FishingService:
 
     @staticmethod
     def _clamp_probability(value: Any, default: float = 0.0) -> float:
-        try:
-            numeric_value = float(value)
-        except (TypeError, ValueError):
-            numeric_value = default
-        return min(max(numeric_value, 0.0), 1.0)
+        return clamp_probability(value, default)
 
     def toggle_auto_fishing(self, user_id: str) -> Dict[str, Any]:
         """
@@ -336,26 +337,16 @@ class FishingService:
         # 4.2 按品质加成给予额外品质（重量/价值）奖励
         # 品质加成来自：鱼竿 × 饰品 × 鱼饵（乘法累积）
         # 使用对数压缩避免概率过高，保持高品质鱼的稀有性
-        quality_bonus = False
         quality_level = 0  # 默认普通品质
-        if quality_modifier > 1.0:
-            # 对数压缩公式：处理乘法累积的品质加成
-            # log2(x) 特性：log2(1)=0, log2(2)=1, log2(4)=2
-            # 天然适合处理乘法累积：log2(a×b) = log2(a) + log2(b)
-            log_value = math.log2(quality_modifier)
-            
-            # 从配置获取高品质鱼最大触发概率，默认35%
-            max_quality_chance = self._clamp_probability(self.config.get("quality_bonus_max_chance", 0.35), 0.35)
-            
-            # 缩放到配置的上限，让 quality_modifier=4.0 时达到上限
-            # 缩放系数 = max_chance / 2（因为 log2(4) = 2）
-            scale_factor = max_quality_chance / 2.0
-            adjusted_chance = log_value * scale_factor
-            
-            # 确保不超过配置的上限，避免高品质鱼过于常见
-            final_chance = min(adjusted_chance, max_quality_chance)
-            
-            quality_bonus = random.random() <= final_chance
+        max_quality_chance = self._clamp_probability(
+            self.config.get("quality_bonus_max_chance", 0.35),
+            0.35,
+        )
+        final_chance = quality_bonus_chance(
+            quality_modifier,
+            max_quality_chance,
+        )
+        quality_bonus = final_chance > 0 and random.random() <= final_chance
         if quality_bonus:
             extra_weight = random.randint(fish_template.min_weight, fish_template.max_weight)
             raw_weight += extra_weight
@@ -367,14 +358,7 @@ class FishingService:
         value = max(0, int(fish_template.base_value * catch_value_weight_modifier))
 
         # 4.3 按数量加成决定额外渔获数量
-        total_catches = 1
-        if quantity_modifier > 1.0:
-            # 整数部分-1 为保证的额外数量；小数部分为额外+1的概率
-            guaranteed_extra = max(0, int(quantity_modifier) - 1)
-            total_catches += guaranteed_extra
-            fractional = quantity_modifier - int(quantity_modifier)
-            if fractional > 0 and random.random() < fractional:
-                total_catches += 1
+        total_catches = roll_catch_count(quantity_modifier)
 
         # 5. 处理鱼塘容量（在确定总渔获量后）
         user_fish_inventory = self.inventory_repo.get_fish_inventory(user.user_id)
@@ -620,82 +604,10 @@ class FishingService:
         }
 
     def _apply_rare_chance_to_distribution(self, distribution: list, rare_chance: float) -> list:
-        """
-        应用稀有度加成，调整鱼类稀有度分布权重。
-        
-        设计理念：
-        - 装备/Buff/鱼饵的稀有度加成影响 4-5 星鱼（稀有鱼）的概率
-        - 6+ 星鱼（超稀有/传说鱼）保持纯运气机制，不受装备影响
-        - 通过从低星转移权重到中高星，确保概率总和始终为 1
-        
-        实现原理：
-        1. 从 1-3 星的总权重中，按 rare_chance 比例转移部分权重
-        2. 将转移的权重分配给 4-5 星，按其原始比例分配
-        3. 6+ 星的概率保持不变，保证超稀有鱼的珍贵性
-        
-        示例效果（rare_chance = 0.46）：
-        - 原始: 1-3星 60%, 4-5星 38%, 6+星 2%
-        - 调整后: 1-3星 32%, 4-5星 66%, 6+星 2%（不变）
-        
-        Args:
-            distribution: 原始稀有度分布列表 [1星, 2星, 3星, 4星, 5星, 6+星]
-            rare_chance: 稀有度加成值，通常在 0.0-0.8 之间
-        
-        Returns:
-            调整后的稀有度分布列表，概率总和为 1
-        """
+        """Apply the shared rarity-weight transfer formula."""
         if len(distribution) < 6:
-            # 安全检查：如果分布数组长度不足，直接返回副本
             return distribution.copy()
-        
-        # 转换系数：1.0 表示 rare_chance 直接作为权重转移比例
-        # 例如 rare_chance=0.46 → 从低星转移 46% 的权重到中高星
-        TRANSFER_FACTOR = 1.0
-        
-        actual_boost = rare_chance * TRANSFER_FACTOR
-        
-        # 限制上限为 0.8，防止低星概率被转移到接近 0 导致游戏体验失衡
-        actual_boost = min(actual_boost, 0.8)
-        
-        new_distribution = distribution.copy()
-        
-        # 分组计算：
-        # - 低星（1-3星，索引 0-2）：普通鱼，作为权重来源
-        # - 中高星（4-5星，索引 3-4）：稀有鱼，接收权重转移
-        # - 超稀有（6+星，索引 5）：传说鱼，不参与计算以保持稀有性
-        low_star_total = sum(new_distribution[:3])
-        mid_high_star_total = sum(new_distribution[3:5])
-        
-        # 边界情况：如果某一组概率为 0，则无法进行权重转移
-        if mid_high_star_total <= 0 or low_star_total <= 0:
-            return new_distribution
-        
-        # 计算转移量：从低星总权重中按比例转移
-        # 例如：低星总权重 60%，rare_chance 46% → 转移 27.6% 的绝对权重
-        transfer_amount = low_star_total * actual_boost
-        
-        # 步骤 1：从低星（1-3星）按原始比例扣减权重
-        # 保持各低星之间的相对比例不变，整体权重减少
-        for i in range(3):
-            if low_star_total > 0:
-                ratio = new_distribution[i] / low_star_total
-                new_distribution[i] = max(0, new_distribution[i] - transfer_amount * ratio)
-        
-        # 步骤 2：向中高星（4-5星）按原始比例分配转移的权重
-        # 保持 4星和 5星之间的相对比例不变，整体权重增加
-        for i in range(3, 5):
-            if mid_high_star_total > 0:
-                ratio = new_distribution[i] / mid_high_star_total
-                new_distribution[i] = new_distribution[i] + transfer_amount * ratio
-        
-        # 步骤 3：6+星（索引 5）完全不参与上述计算，保持原值
-        # 这确保了超稀有鱼的概率不受装备影响，维持其珍贵性和神秘感
-        
-        # 归一化处理：确保所有概率之和精确为 1.0
-        # 这是必要的，因为浮点运算可能产生微小误差
-        new_distribution = [x / sum(new_distribution) for x in new_distribution]
-        
-        return new_distribution
+        return apply_rare_bonus(distribution, rare_chance)
 
     def _get_fish_template(self, rarity: int, zone: FishingZone, coins_chance: float):
         """根据稀有度和区域配置获取鱼类模板"""

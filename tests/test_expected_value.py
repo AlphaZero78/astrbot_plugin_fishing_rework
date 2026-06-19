@@ -14,6 +14,10 @@ from astrbot_plugin_fishing.core.analytics.expected_value import (
     weighted_fish_value,
     weighted_fish_metrics,
 )
+from astrbot_plugin_fishing.core.mechanics import (
+    expected_catch_count,
+    roll_catch_count,
+)
 
 
 def test_rare_bonus_preserves_six_plus_bucket_and_total():
@@ -75,6 +79,21 @@ def test_expected_fishing_return_combines_runtime_multipliers():
     assert result["net_value"] == pytest.approx(28.6)
     assert result["attempts_per_hour"] == pytest.approx(20)
     assert result["net_value_per_hour"] == pytest.approx(572)
+
+
+def test_quantity_modifier_preserves_the_guaranteed_first_catch():
+    assert expected_catch_count(0.5) == pytest.approx(1.0)
+    assert roll_catch_count(0.5, lambda: 0.0) == 1
+    assert roll_catch_count(1.3, lambda: 0.29) == 2
+    assert roll_catch_count(1.3, lambda: 0.31) == 1
+
+    result = expected_fishing_return(
+        [1, 0, 0, 0, 0, 0],
+        {1: [10]},
+        FishingScenario(success_rate=1, quantity_modifier=0.5),
+    )
+    assert result["expected_catches"] == pytest.approx(1.0)
+    assert result["gross_value"] == pytest.approx(10.0)
 
 
 def test_expected_fishing_return_ignores_empty_zero_probability_buckets():
