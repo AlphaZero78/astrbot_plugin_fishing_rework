@@ -43,6 +43,134 @@
     {% endif %}
 </div>
 
+<!-- 交易所运行配置 -->
+<div class="card mb-4">
+    <div class="card-header">
+        <h5 class="mb-0"><i class="fas fa-sliders-h"></i> 交易所状态与价格配置</h5>
+    </div>
+    <div class="card-body">
+        <form method="POST" action="{{ url_for('admin_bp.update_exchange_settings') }}">
+            <h6 class="text-primary mb-3">基础价格</h6>
+            <div class="row g-3 mb-4">
+                <div class="col-md-4">
+                    <label class="form-label">鱼干基础价格</label>
+                    <input type="number" min="1" class="form-control"
+                           name="exchange.initial_prices.dried_fish"
+                           value="{{ exchange_config.initial_prices.dried_fish }}">
+                </div>
+                <div class="col-md-4">
+                    <label class="form-label">鱼卵基础价格</label>
+                    <input type="number" min="1" class="form-control"
+                           name="exchange.initial_prices.fish_roe"
+                           value="{{ exchange_config.initial_prices.fish_roe }}">
+                </div>
+                <div class="col-md-4">
+                    <label class="form-label">鱼油基础价格</label>
+                    <input type="number" min="1" class="form-control"
+                           name="exchange.initial_prices.fish_oil"
+                           value="{{ exchange_config.initial_prices.fish_oil }}">
+                </div>
+            </div>
+
+            <h6 class="text-primary mb-3">市场状态</h6>
+            <div class="row g-3 mb-4">
+                <div class="col-md-4">
+                    <label class="form-label">市场情绪</label>
+                    <select class="form-select" name="exchange.market_sentiment">
+                        {% for value, label in [('panic', '恐慌'), ('pessimistic', '悲观'), ('neutral', '中性'), ('optimistic', '乐观'), ('euphoric', '狂热')] %}
+                        <option value="{{ value }}" {% if exchange_config.market_sentiment == value %}selected{% endif %}>{{ label }}（{{ value }}）</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="col-md-4">
+                    <label class="form-label">价格趋势</label>
+                    <select class="form-select" name="exchange.price_trend">
+                        {% for value, label in [('falling', '下跌'), ('stable', '稳定'), ('rising', '上涨'), ('volatile', '剧烈波动'), ('sideways', '横盘')] %}
+                        <option value="{{ value }}" {% if exchange_config.price_trend == value %}selected{% endif %}>{{ label }}（{{ value }}）</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="col-md-4">
+                    <label class="form-label">供需状态</label>
+                    <select class="form-select" name="exchange.supply_demand">
+                        {% for value in ['供过于求', '平衡', '供不应求'] %}
+                        <option value="{{ value }}" {% if exchange_config.supply_demand == value %}selected{% endif %}>{{ value }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+            </div>
+
+            <details class="mb-4">
+                <summary class="fw-semibold text-primary mb-3">价格波动与更新参数</summary>
+                <div class="row g-3 mt-1">
+                    <div class="col-md-6">
+                        <label class="form-label">每日更新时间</label>
+                        <input type="text" class="form-control"
+                               name="exchange.update_timing"
+                               value="{{ exchange_config.update_timing }}"
+                               placeholder="9:00, 15:00, 21:00">
+                    </div>
+                    <div class="col-md-3">
+                        <label class="form-label">最低价格</label>
+                        <input type="number" min="1" class="form-control"
+                               name="exchange.min_price"
+                               value="{{ exchange_config.min_price }}">
+                    </div>
+                    <div class="col-md-3">
+                        <label class="form-label">最高价格</label>
+                        <input type="number" min="1" class="form-control"
+                               name="exchange.max_price"
+                               value="{{ exchange_config.max_price }}">
+                    </div>
+                    <div class="col-md-4">
+                        <label class="form-label">鱼干波动率</label>
+                        <input type="number" min="0" max="1" step="0.001" class="form-control"
+                               name="exchange.volatility.dried_fish"
+                               value="{{ exchange_config.volatility.dried_fish }}">
+                    </div>
+                    <div class="col-md-4">
+                        <label class="form-label">鱼卵波动率</label>
+                        <input type="number" min="0" max="1" step="0.001" class="form-control"
+                               name="exchange.volatility.fish_roe"
+                               value="{{ exchange_config.volatility.fish_roe }}">
+                    </div>
+                    <div class="col-md-4">
+                        <label class="form-label">鱼油波动率</label>
+                        <input type="number" min="0" max="1" step="0.001" class="form-control"
+                               name="exchange.volatility.fish_oil"
+                               value="{{ exchange_config.volatility.fish_oil }}">
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label">突发事件概率</label>
+                        <input type="number" min="0" max="1" step="0.001" class="form-control"
+                               name="exchange.event_chance"
+                               value="{{ exchange_config.event_chance }}">
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label">单次最大涨跌幅</label>
+                        <input type="number" min="0" max="1" step="0.001" class="form-control"
+                               name="exchange.max_change_rate"
+                               value="{{ exchange_config.max_change_rate }}">
+                    </div>
+                </div>
+            </details>
+
+            <div class="form-check mb-3">
+                <input class="form-check-input" type="checkbox" id="resetCurrentPrices"
+                       name="reset_current_prices">
+                <label class="form-check-label" for="resetCurrentPrices">
+                    保存后立即按新基础价格重置当前行情
+                </label>
+            </div>
+            <div class="d-flex justify-content-end">
+                <button type="submit" class="btn btn-primary">
+                    <i class="fas fa-save"></i> 保存交易所配置
+                </button>
+            </div>
+        </form>
+    </div>
+</div>
+
 <!-- 价格趋势图表 -->
 <div class="row mb-4">
     <div class="col-12">

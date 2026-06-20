@@ -251,6 +251,8 @@ class FishingPlugin(Star):
                 self.fishing_service.stop_daily_tax_task()
         if hasattr(self, "game_mechanics_service"):
             self.game_mechanics_service.config = game_config
+        if hasattr(self, "exchange_service"):
+            self.exchange_service.apply_config(game_config)
 
     async def _start_web_admin_server(self):
         """Start the Web admin server if it is not already running."""

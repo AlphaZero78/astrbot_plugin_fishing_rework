@@ -5,6 +5,7 @@ from typing import Any, Mapping
 
 
 EXCHANGE_DEFAULTS = {
+    "update_timing": "9:00, 15:00, 21:00",
     "account_fee": 100000,
     "capacity": 1000,
     "tax_rate": 0.05,
@@ -25,6 +26,9 @@ EXCHANGE_DEFAULTS = {
         "euphoric": 0.1,
     },
     "merge_window_minutes": 30,
+    "market_sentiment": "neutral",
+    "price_trend": "stable",
+    "supply_demand": "平衡",
     "initial_prices": {
         "dried_fish": 6000,
         "fish_roe": 12000,

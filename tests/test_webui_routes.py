@@ -30,6 +30,15 @@ class _ItemRepo:
         self.updated = (item_id, data)
 
 
+class _ExchangeService:
+    def __init__(self):
+        self.reset_calls = 0
+
+    def reset_prices_to_initial(self):
+        self.reset_calls += 1
+        return {"success": True}
+
+
 def test_admin_routes_persist_settings_and_item_effects(tmp_path):
     async def scenario():
         schema_path = tmp_path / "schema.json"
@@ -54,6 +63,44 @@ def test_admin_routes_persist_settings_and_item_effects(tmp_path):
                             },
                         },
                     },
+                    "exchange": {
+                        "description": "exchange",
+                        "type": "object",
+                        "items": {
+                            "initial_prices": {
+                                "type": "object",
+                                "items": {
+                                    "dried_fish": {
+                                        "type": "int",
+                                        "default": 6000,
+                                        "min": 1,
+                                    },
+                                    "fish_roe": {
+                                        "type": "int",
+                                        "default": 12000,
+                                        "min": 1,
+                                    },
+                                    "fish_oil": {
+                                        "type": "int",
+                                        "default": 10000,
+                                        "min": 1,
+                                    },
+                                },
+                            },
+                            "market_sentiment": {
+                                "type": "string",
+                                "default": "neutral",
+                            },
+                            "price_trend": {
+                                "type": "string",
+                                "default": "stable",
+                            },
+                            "supply_demand": {
+                                "type": "string",
+                                "default": "平衡",
+                            },
+                        },
+                    },
                 }
             ),
             encoding="utf-8",
@@ -62,6 +109,16 @@ def test_admin_routes_persist_settings_and_item_effects(tmp_path):
             {
                 "webui": {"port": 7777},
                 "fishing": {"cooldown_seconds": 180},
+                "exchange": {
+                    "initial_prices": {
+                        "dried_fish": 6000,
+                        "fish_roe": 12000,
+                        "fish_oil": 10000,
+                    },
+                    "market_sentiment": "neutral",
+                    "price_trend": "stable",
+                    "supply_demand": "平衡",
+                },
             }
         )
         game_config = build_game_config(raw_config)
@@ -70,15 +127,18 @@ def test_admin_routes_persist_settings_and_item_effects(tmp_path):
         )
         item_repo = _ItemRepo()
         item_service = ItemTemplateService(item_repo, None)
+        exchange_service = _ExchangeService()
         app = create_app(
             "route-test-secret",
             {
                 "runtime_config_service": runtime_service,
                 "item_template_service": item_service,
+                "exchange_service": exchange_service,
             },
         )
         assert app.jinja_env.filters["number"](1.10002432) == "1.1"
         assert app.jinja_env.filters["percent"](0.02500608) == "2.5"
+        assert app.jinja_env.get_template("exchange.html") is not None
         app.config["TESTING"] = True
 
         client = app.test_client()
@@ -96,6 +156,25 @@ def test_admin_routes_persist_settings_and_item_effects(tmp_path):
         assert raw_config["fishing"]["cooldown_seconds"] == 240
         assert game_config["fishing"]["cooldown_seconds"] == 240
         assert raw_config.saved == 1
+
+        exchange_response = await client.post(
+            "/admin/exchange/settings",
+            form={
+                "exchange.initial_prices.dried_fish": "6500",
+                "exchange.initial_prices.fish_roe": "12500",
+                "exchange.initial_prices.fish_oil": "10500",
+                "exchange.market_sentiment": "optimistic",
+                "exchange.price_trend": "rising",
+                "exchange.supply_demand": "供不应求",
+                "reset_current_prices": "on",
+            },
+        )
+        assert exchange_response.status_code == 302
+        assert raw_config["exchange"]["initial_prices"]["dried_fish"] == 6500
+        assert game_config["exchange"]["market_sentiment"] == "optimistic"
+        assert game_config["exchange"]["price_trend"] == "rising"
+        assert game_config["exchange"]["supply_demand"] == "供不应求"
+        assert exchange_service.reset_calls == 1
 
         item_response = await client.post(
             "/admin/items/edit/15",

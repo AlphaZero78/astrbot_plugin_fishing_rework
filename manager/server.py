@@ -886,6 +886,9 @@ async def delete_user(user_id):
 async def manage_exchange():
     try:
         exchange_service = current_app.config["EXCHANGE_SERVICE"]
+        runtime_config_service = current_app.config.get(
+            "RUNTIME_CONFIG_SERVICE"
+        )
         
         # 获取当前价格
         market_status = exchange_service.get_market_status()
@@ -901,6 +904,11 @@ async def manage_exchange():
             market_status=market_status,
             price_history=price_history,
             user_stats=user_stats,
+            exchange_config=(
+                runtime_config_service.game_config.get("exchange", {})
+                if runtime_config_service
+                else {}
+            ),
             now=datetime.now()
         )
     except Exception as e:
@@ -908,6 +916,83 @@ async def manage_exchange():
         logger.error(traceback.format_exc())
         await flash(f"页面加载失败: {str(e)}", "danger")
         return redirect(url_for("admin_bp.index"))
+
+@admin_bp.route("/exchange/settings", methods=["POST"])
+@login_required
+async def update_exchange_settings():
+    try:
+        runtime_config_service = current_app.config["RUNTIME_CONFIG_SERVICE"]
+        exchange_service = current_app.config["EXCHANGE_SERVICE"]
+        form = await request.form
+        allowed_values = {
+            "exchange.market_sentiment": {
+                "panic",
+                "pessimistic",
+                "neutral",
+                "optimistic",
+                "euphoric",
+            },
+            "exchange.price_trend": {
+                "falling",
+                "stable",
+                "rising",
+                "volatile",
+                "sideways",
+            },
+            "exchange.supply_demand": {
+                "供过于求",
+                "平衡",
+                "供不应求",
+            },
+        }
+        for key, allowed in allowed_values.items():
+            if key in form and form[key] not in allowed:
+                raise ValueError(f"{key} 的值无效")
+        if (
+            "exchange.min_price" in form
+            and "exchange.max_price" in form
+            and int(form["exchange.min_price"])
+            > int(form["exchange.max_price"])
+        ):
+            raise ValueError("最低价格不能高于最高价格")
+        submitted = {
+            key: form[key]
+            for key in (
+                "exchange.update_timing",
+                "exchange.initial_prices.dried_fish",
+                "exchange.initial_prices.fish_roe",
+                "exchange.initial_prices.fish_oil",
+                "exchange.volatility.dried_fish",
+                "exchange.volatility.fish_roe",
+                "exchange.volatility.fish_oil",
+                "exchange.event_chance",
+                "exchange.max_change_rate",
+                "exchange.min_price",
+                "exchange.max_price",
+                "exchange.market_sentiment",
+                "exchange.price_trend",
+                "exchange.supply_demand",
+            )
+            if key in form
+        }
+        result = runtime_config_service.update(submitted)
+        reset_message = ""
+        if form.get("reset_current_prices") == "on":
+            reset_result = exchange_service.reset_prices_to_initial()
+            if not reset_result.get("success"):
+                raise ValueError(
+                    reset_result.get("message", "重置当前行情失败")
+                )
+            reset_message = "，当前行情已按新基础价格重置"
+        changed_count = len(result.get("changed", []))
+        await flash(
+            f"交易所配置已保存（{changed_count} 项变更）{reset_message}。",
+            "success",
+        )
+    except Exception as e:
+        logger.error(f"保存交易所配置失败: {e}")
+        await flash(f"保存交易所配置失败: {str(e)}", "danger")
+    return redirect(url_for("admin_bp.manage_exchange"))
 
 @admin_bp.route("/exchange/update_prices", methods=["POST"])
 @login_required

@@ -268,16 +268,22 @@
           "dried_fish": {
             "type": "float",
             "default": 0.08,
+            "min": 0,
+            "max": 1,
             "description": "鱼干基础波动率（±8%）"
           },
           "fish_roe": {
             "type": "float",
             "default": 0.12,
+            "min": 0,
+            "max": 1,
             "description": "鱼卵基础波动率（±12%）"
           },
           "fish_oil": {
             "type": "float",
             "default": 0.10,
+            "min": 0,
+            "max": 1,
             "description": "鱼油基础波动率（±10%）"
           }
         }
@@ -285,21 +291,27 @@
       "event_chance": {
         "type": "float",
         "default": 0.1,
+        "min": 0,
+        "max": 1,
         "description": "突发事件触发概率（10%）"
       },
       "max_change_rate": {
         "type": "float",
         "default": 0.2,
+        "min": 0,
+        "max": 1,
         "description": "单次最大涨跌幅限制（20%）"
       },
       "min_price": {
         "type": "int",
         "default": 1,
+        "min": 1,
         "description": "最低价格限制"
       },
       "max_price": {
         "type": "int",
         "default": 1000000,
+        "min": 1,
         "description": "最高价格限制（100万金币）"
       },
       "sentiment_weights": {
@@ -337,22 +349,40 @@
         "default": 30,
         "description": "商品合并时间窗口（分钟）"
       },
+      "market_sentiment": {
+        "type": "string",
+        "default": "neutral",
+        "description": "交易所市场情绪"
+      },
+      "price_trend": {
+        "type": "string",
+        "default": "stable",
+        "description": "交易所价格趋势"
+      },
+      "supply_demand": {
+        "type": "string",
+        "default": "平衡",
+        "description": "交易所供需状态"
+      },
       "initial_prices": {
         "type": "object",
         "items": {
           "dried_fish": {
             "type": "int",
             "default": 6000,
+            "min": 1,
             "description": "鱼干初始价格（低风险低收益）"
           },
           "fish_roe": {
             "type": "int",
             "default": 12000,
+            "min": 1,
             "description": "鱼卵初始价格（高风险高收益）"
           },
           "fish_oil": {
             "type": "int",
             "default": 10000,
+            "min": 1,
             "description": "鱼油初始价格（投机品，事件驱动）"
           }
         }

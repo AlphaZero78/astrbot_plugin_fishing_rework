@@ -15,8 +15,9 @@ class ExchangePriceService:
     
     def __init__(self, exchange_repo: AbstractExchangeRepository, config: Dict[str, Any]):
         self.exchange_repo = exchange_repo
-        self.config = config.get("exchange", {})
-        self._update_schedule = self._parse_update_schedule(self.config.get("update_timing"))
+        self.config = {}
+        self._update_schedule = []
+        self.apply_config(config)
         
         # 商品定义
         self.commodities = {
@@ -29,10 +30,26 @@ class ExchangePriceService:
         self._price_update_thread: Optional[threading.Thread] = None
         self._price_update_running = False
 
+    def apply_config(self, config: Dict[str, Any]) -> None:
+        self.config = config.get("exchange", {})
+        self._update_schedule = self._parse_update_schedule(
+            self.config.get("update_timing")
+        )
+
+    def _configured_market_state(self) -> Dict[str, str]:
+        return {
+            "market_sentiment": self.config.get(
+                "market_sentiment", "neutral"
+            ),
+            "price_trend": self.config.get("price_trend", "stable"),
+            "supply_demand": self.config.get("supply_demand", "平衡"),
+        }
+
     def get_market_status(self) -> Dict[str, Any]:
         """获取市场状态"""
         try:
             today_str = datetime.now().strftime("%Y-%m-%d")
+            market_state = self._configured_market_state()
             prices = self.exchange_repo.get_prices_for_date(today_str)
             
             if not prices:
@@ -45,9 +62,7 @@ class ExchangePriceService:
                         "success": True,
                         "prices": price_data,
                         "commodities": self.commodities,
-                        "market_sentiment": "neutral",
-                        "price_trend": "stable",
-                        "supply_demand": "平衡",
+                        **market_state,
                         "date": today_str
                     }
                 # 昨日也没有则返回初始价格
@@ -60,9 +75,7 @@ class ExchangePriceService:
                     "success": True,
                     "prices": initial_prices,
                     "commodities": self.commodities,
-                    "market_sentiment": "neutral",
-                    "price_trend": "stable",
-                    "supply_demand": "平衡",
+                    **market_state,
                     "date": today_str
                 }
 
@@ -71,9 +84,7 @@ class ExchangePriceService:
                 "success": True,
                 "prices": price_data,
                 "commodities": self.commodities,
-                "market_sentiment": "neutral",
-                "price_trend": "stable",
-                "supply_demand": "平衡",
+                **market_state,
                 "date": today_str
             }
         except Exception as e:

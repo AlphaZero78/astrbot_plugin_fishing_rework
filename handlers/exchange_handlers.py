@@ -575,7 +575,7 @@ class ExchangeHandlers:
             commodities = result["commodities"]
 
             # 获取价格历史用于计算涨跌幅（使用“上一次价格”而非“昨天”）
-            price_history = self.exchange_service.get_price_history(days=2)
+            price_history = self.exchange_service.get_price_history(days=7)
             previous_prices = {}
             if price_history.get("success"):
                 updates = price_history.get("updates", []) or []
@@ -760,7 +760,39 @@ class ExchangeHandlers:
                                 ),
                             }
                         )
-                sections = [{"title": "实时行情", "rows": price_rows}]
+                chart_colors = {
+                    "dried_fish": (0, 123, 255),
+                    "fish_roe": (255, 176, 0),
+                    "fish_oil": (40, 167, 69),
+                }
+                chart_series = []
+                history = price_history.get("history", {})
+                for comm_id in prices:
+                    values = history.get(comm_id, [])
+                    if not values:
+                        continue
+                    chart_series.append(
+                        {
+                            "name": commodities.get(comm_id, {}).get(
+                                "name", comm_id
+                            ),
+                            "values": values,
+                            "color": chart_colors.get(
+                                comm_id, (51, 153, 255)
+                            ),
+                        }
+                    )
+                sections = [
+                    {
+                        "title": "实时行情",
+                        "rows": price_rows,
+                        "chart": {
+                            "title": "价格趋势（最近 7 天）",
+                            "labels": price_history.get("labels", []),
+                            "series": chart_series,
+                        },
+                    }
+                ]
                 if inventory_rows:
                     sections.append({"title": "我的持仓", "rows": inventory_rows})
                 image = draw_economy_panel(

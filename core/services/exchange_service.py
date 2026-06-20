@@ -26,6 +26,11 @@ class ExchangeService:
         # 商品定义（用于兼容性）
         self.commodities = self.price_service.commodities
 
+    def apply_config(self, config: Dict[str, Any]) -> None:
+        self.config = config
+        self.price_service.apply_config(config)
+        self.inventory_service.apply_config(config)
+
     # 价格管理相关方法
     def get_market_status(self) -> Dict[str, Any]:
         """获取市场状态"""

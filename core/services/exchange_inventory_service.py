@@ -31,6 +31,9 @@ class ExchangeInventoryService:
             "fish_oil": {"name": "鱼油", "description": "从鱼类中提取的油脂，用途广泛"}
         }
 
+    def apply_config(self, config: Dict[str, Any]) -> None:
+        self.config = config.get("exchange", {})
+
     def get_user_commodities(self, user_id: str) -> List[UserCommodity]:
         """获取用户的大宗商品库存"""
         return self.exchange_repo.get_user_commodities(user_id)
