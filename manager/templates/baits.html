@@ -33,11 +33,11 @@
                         <td>{{ item.cost }}</td>
                         <td>{{ item.effect_description or '无' }}</td>
                         <td>
-                            <span class="badge bg-success" title="成功率加成">+{{ item.success_rate_modifier * 100 }}%</span>
-                            <span class="badge bg-info" title="稀有鱼权重加成">+{{ item.rare_chance_modifier * 100 }}%</span>
-                            <span class="badge bg-secondary" title="垃圾减少率">{{ item.garbage_reduction_modifier * 100 }}%</span>
-                            <span class="badge bg-warning text-dark" title="重量/价值乘数">x{{ item.value_modifier }}</span>
-                            <span class="badge bg-primary" title="渔获数量倍率">x{{ item.quantity_modifier }}</span>
+                            <span class="badge bg-success" title="成功率加成">+{{ item.success_rate_modifier|percent }}%</span>
+                            <span class="badge bg-info" title="稀有鱼权重加成">+{{ item.rare_chance_modifier|percent }}%</span>
+                            <span class="badge bg-secondary" title="垃圾减少率">{{ item.garbage_reduction_modifier|percent }}%</span>
+                            <span class="badge bg-warning text-dark" title="重量/价值乘数">x{{ item.value_modifier|number }}</span>
+                            <span class="badge bg-primary" title="渔获数量倍率">x{{ item.quantity_modifier|number }}</span>
                             {% if item.is_consumable %}
                                 <span class="badge bg-danger">消耗品</span>
                             {% else %}

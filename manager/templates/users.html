@@ -62,7 +62,7 @@
                                 <span class="badge bg-warning text-dark">{{ user.coins }}</span>
                             </td>
                             <td>{{ user.total_fishing_count }}</td>
-                            <td>{{ user.total_weight_caught }}g</td>
+                            <td>{{ user.total_weight_caught|number }}g</td>
                             <td>{{ user.created_at.strftime('%Y-%m-%d %H:%M') if user.created_at else '未知' }}</td>
                             <td>{{ user.last_login_time.strftime('%Y-%m-%d %H:%M') if user.last_login_time else '从未' }}</td>
                             <td>
@@ -108,7 +108,7 @@
                                 <small class="text-muted">
                                     <code>{{ user.user_id }}</code><br>
                                     钓鱼 {{ user.total_fishing_count }} 次<br>
-                                    总重量 {{ user.total_weight_caught }}g<br>
+                                    总重量 {{ user.total_weight_caught|number }}g<br>
                                     注册于 {{ user.created_at.strftime('%Y-%m-%d') if user.created_at else '未知' }}
                                 </small>
                             </p>

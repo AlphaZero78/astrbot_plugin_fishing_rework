@@ -41,8 +41,8 @@
                         <td>{{ item.fish_id }}</td>
                         <td>{{ item.name }}</td>
                         <td>{{ '★' * item.rarity }}</td>
-                        <td>{{ item.base_value }}</td>
-                        <td>{{ item.min_weight }} - {{ item.max_weight }}</td>
+                        <td>{{ item.base_value|number }}</td>
+                        <td>{{ item.min_weight|number }} - {{ item.max_weight|number }}</td>
                         <td>{{ item.description or '无' }}</td>
                         <td class="text-end">
                             <button class="btn btn-sm btn-info edit-btn"

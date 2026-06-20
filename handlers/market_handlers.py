@@ -1,9 +1,69 @@
+from astrbot.api import logger
 from astrbot.api.event import filter, AstrMessageEvent
 from ..utils import format_rarity_display, parse_target_user_id, parse_amount
+from ..core.formatting import format_coins, format_number
+from ..draw.economy import draw_economy_panel, save_economy_image
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from ..main import FishingPlugin
+
+
+def _shop_cost_text(plugin: "FishingPlugin", costs: list) -> str:
+    if not costs:
+        return "免费"
+    parts = []
+    type_icons = {
+        "coins": "金币",
+        "premium": "高级货币",
+        "fish": "鱼",
+        "item": "道具",
+        "rod": "鱼竿",
+        "accessory": "饰品",
+    }
+    for cost in costs:
+        cost_type = cost.get("cost_type", "")
+        amount = format_number(cost.get("cost_amount", 0))
+        name = type_icons.get(cost_type, cost_type)
+        item_id = cost.get("cost_item_id")
+        if item_id:
+            template = None
+            if cost_type == "fish":
+                template = plugin.item_template_repo.get_fish_by_id(item_id)
+            elif cost_type == "item":
+                template = plugin.item_template_repo.get_by_id(item_id)
+            elif cost_type == "rod":
+                template = plugin.item_template_repo.get_rod_by_id(item_id)
+            elif cost_type == "accessory":
+                template = plugin.item_template_repo.get_accessory_by_id(item_id)
+            if template:
+                name = template.name
+        parts.append(f"{name} x{amount}")
+    return " / ".join(parts)
+
+
+def _shop_reward_text(plugin: "FishingPlugin", rewards: list) -> str:
+    if not rewards:
+        return ""
+    names = []
+    for reward in rewards:
+        reward_type = reward.get("reward_type", "")
+        item_id = reward.get("reward_item_id")
+        template = None
+        if reward_type == "rod":
+            template = plugin.item_template_repo.get_rod_by_id(item_id)
+        elif reward_type == "bait":
+            template = plugin.item_template_repo.get_bait_by_id(item_id)
+        elif reward_type == "accessory":
+            template = plugin.item_template_repo.get_accessory_by_id(item_id)
+        elif reward_type == "item":
+            template = plugin.item_template_repo.get_by_id(item_id)
+        elif reward_type == "fish":
+            template = plugin.item_template_repo.get_fish_by_id(item_id)
+        name = template.name if template else reward_type or "奖励"
+        quantity = reward.get("reward_quantity", 1)
+        names.append(f"{name} x{format_number(quantity)}")
+    return "包含：" + "、".join(names)
 
 
 async def sell_all(plugin: "FishingPlugin", event: AstrMessageEvent):
@@ -115,6 +175,39 @@ async def shop(plugin: "FishingPlugin", event: AstrMessageEvent):
 
         # 对商店列表进行排序：按 sort_order 升序，然后按 shop_id 升序
         shops.sort(key=lambda x: (x.get("sort_order", 999), x.get("shop_id", 999)))
+        try:
+            rows = []
+            for shop_data in shops:
+                shop_type = {
+                    "normal": "普通商店",
+                    "premium": "高级商店",
+                    "limited": "限时商店",
+                }.get(shop_data.get("shop_type"), "商店")
+                rows.append(
+                    {
+                        "primary": (
+                            f"{shop_data.get('name')}  "
+                            f"ID {shop_data.get('shop_id')}"
+                        ),
+                        "secondary": shop_data.get("description") or "暂无描述",
+                        "meta": (
+                            f"{shop_type} · "
+                            f"{'营业中' if shop_data.get('is_active') else '已关闭'}"
+                        ),
+                    }
+                )
+            image = draw_economy_panel(
+                "商店列表",
+                f"共 {len(rows)} 个商店",
+                [{"title": "可用商店", "rows": rows}],
+                "查看详情：商店 商店ID",
+            )
+            yield event.image_result(
+                save_economy_image(image, "shop_list", plugin.data_dir)
+            )
+            return
+        except Exception as exc:
+            logger.warning(f"商店列表绘图失败，回退文本消息: {exc}")
 
         msg = "【🛒 商店列表】\n"
         for s in shops:
@@ -165,6 +258,45 @@ async def shop(plugin: "FishingPlugin", event: AstrMessageEvent):
         msg += "\n📭 当前没有在售商品。"
         yield event.plain_result(msg)
         return
+    try:
+        rows = []
+        for entry in items:
+            item = entry["item"]
+            stock = (
+                "无限"
+                if item.get("stock_total") is None
+                else (
+                    f"{item.get('stock_total', 0) - item.get('stock_sold', 0)}"
+                    f"/{item.get('stock_total', 0)}"
+                )
+            )
+            rows.append(
+                {
+                    "primary": f"{item['name']}  ID {item['item_id']}",
+                    "secondary": item.get("description") or "暂无描述",
+                    "meta": (
+                        f"价格：{_shop_cost_text(plugin, entry['costs'])} · "
+                        f"库存：{stock}"
+                        + (
+                            f" · {_shop_reward_text(plugin, entry.get('rewards', []))}"
+                            if entry.get("rewards")
+                            else ""
+                        )
+                    ),
+                }
+            )
+        image = draw_economy_panel(
+            shop.get("name", "商店"),
+            shop.get("description") or f"商店 ID {shop.get('shop_id')}",
+            [{"title": "在售商品", "rows": rows}],
+            f"购买：商店购买 {shop.get('shop_id')} 商品ID [数量]",
+        )
+        yield event.image_result(
+            save_economy_image(image, "shop_detail", plugin.data_dir)
+        )
+        return
+    except Exception as exc:
+        logger.warning(f"商店详情绘图失败，回退文本消息: {exc}")
     msg += "\n🛍️ 【在售商品】\n"
     msg += "═" * 50 + "\n"
     for i, e in enumerate(items):
@@ -563,6 +695,84 @@ async def market(plugin: "FishingPlugin", event: AstrMessageEvent):
     if not any(grouped_items.values()):
         yield event.plain_result("🛒 市场中没有商品可供购买。")
         return
+    try:
+        section_names = {
+            "rod": "鱼竿",
+            "accessory": "饰品",
+            "commodity": "大宗商品",
+            "item": "道具",
+            "fish": "鱼类",
+        }
+        all_listings = [
+            (item_type, listing)
+            for item_type, listings in grouped_items.items()
+            for listing in listings
+        ]
+        page_size = 20
+        page_count = (len(all_listings) + page_size - 1) // page_size
+        for page_index in range(page_count):
+            page_items = all_listings[
+                page_index * page_size : (page_index + 1) * page_size
+            ]
+            page_groups = {item_type: [] for item_type in section_names}
+            for item_type, listing in page_items:
+                page_groups[item_type].append(listing)
+            sections = []
+            for item_type, listings in page_groups.items():
+                rows = []
+                for listing in listings:
+                    quality = (
+                        " · 高品质"
+                        if item_type == "fish"
+                        and getattr(listing, "quality_level", 0) == 1
+                        else ""
+                    )
+                    refine = (
+                        f" · 精{listing.refine_level}"
+                        if getattr(listing, "refine_level", 1) > 1
+                        else ""
+                    )
+                    seller = (
+                        "匿名卖家"
+                        if getattr(listing, "is_anonymous", False)
+                        else listing.seller_nickname
+                    )
+                    rows.append(
+                        {
+                            "primary": (
+                                f"{listing.item_name} x{listing.quantity}  "
+                                f"ID {_get_display_code_for_market_item(listing)}"
+                            ),
+                            "secondary": listing.item_description or "暂无描述",
+                            "meta": (
+                                f"{format_coins(listing.price)} 金币 · "
+                                f"{seller}{quality}{refine}"
+                            ),
+                        }
+                    )
+                if rows:
+                    sections.append(
+                        {"title": section_names[item_type], "rows": rows}
+                    )
+            image = draw_economy_panel(
+                "玩家市场",
+                (
+                    f"共 {len(all_listings)} 条挂单 · "
+                    f"第 {page_index + 1}/{page_count} 页"
+                ),
+                sections,
+                "购买：购买 市场ID · 挂单有效期 5 天",
+            )
+            yield event.image_result(
+                save_economy_image(
+                    image,
+                    f"market_{page_index + 1}",
+                    plugin.data_dir,
+                )
+            )
+        return
+    except Exception as exc:
+        logger.warning(f"市场绘图失败，回退文本消息: {exc}")
 
     # --- 帮助函数：用于格式化单个分区 ---
     def format_section(title_emoji, title_text, listings):

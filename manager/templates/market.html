@@ -30,7 +30,7 @@
             <div class="card-body">
                 <div class="d-flex justify-content-between">
                     <div>
-                        <h4 class="card-title">{{ stats.total_value }}</h4>
+                        <h4 class="card-title">{{ stats.total_value|number }}</h4>
                         <p class="card-text">总价值(金币)</p>
                     </div>
                     <div class="align-self-center">
@@ -242,7 +242,7 @@
                         <td>
                             <div class="d-flex align-items-center">
                                 <span id="price-display-{{ listing.market_id }}" class="price-display">
-                                    <i class="fas fa-coins text-warning"></i> {{ listing.price }}
+                                    <i class="fas fa-coins text-warning"></i> {{ listing.price|number }}
                                 </span>
                                 <input type="number" 
                                        id="price-input-{{ listing.market_id }}" 

@@ -11,6 +11,7 @@ from quart import (
     Blueprint, current_app, jsonify
 )
 from astrbot.api import logger
+from ..core.formatting import format_number, format_percent
 
 
 admin_bp = Blueprint(
@@ -32,6 +33,8 @@ def create_app(secret_key: str, services: Dict[str, Any]):
     app = Quart(__name__)
     app.secret_key = os.urandom(24)
     app.config["SECRET_LOGIN_KEY"] = secret_key
+    app.jinja_env.filters["number"] = format_number
+    app.jinja_env.filters["percent"] = format_percent
 
     # 将所有注入的服务实例存入app的配置中，供路由函数使用
     # 键名将转换为大写，例如 'user_service' -> 'USER_SERVICE'

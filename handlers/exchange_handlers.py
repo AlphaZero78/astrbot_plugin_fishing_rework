@@ -1,6 +1,9 @@
+from astrbot.api import logger
 from astrbot.api.event import AstrMessageEvent
 from typing import Optional, Dict, Any, TYPE_CHECKING, List
 from datetime import datetime, timedelta
+from ..core.formatting import format_coins, format_number
+from ..draw.economy import draw_economy_panel, save_economy_image
 
 if TYPE_CHECKING:
     from ..main import FishingPlugin
@@ -704,6 +707,81 @@ class ExchangeHandlers:
             msg += "═" * 30 + "\n"
             msg += "💡 使用【交易所 帮助】查看更多命令。"
 
+            try:
+                price_rows = []
+                for comm_id, price in prices.items():
+                    commodity = commodities.get(comm_id, {})
+                    previous = previous_prices.get(comm_id)
+                    if previous:
+                        change_percent = (price - previous) / previous * 100
+                        trend = (
+                            "上涨"
+                            if change_percent > 0
+                            else "下跌" if change_percent < 0 else "持平"
+                        )
+                        change_text = (
+                            f"{trend} {format_number(abs(change_percent), 1)}%"
+                        )
+                    else:
+                        change_text = "暂无上一期价格"
+                    price_rows.append(
+                        {
+                            "primary": (
+                                f"{commodity.get('name', comm_id)}  "
+                                f"{format_coins(price)} 金币"
+                            ),
+                            "secondary": commodity.get("description", ""),
+                            "meta": change_text,
+                        }
+                    )
+
+                inventory_rows = []
+                if inventory_result.get("success"):
+                    for comm_id, data in inventory_result.get(
+                        "inventory", {}
+                    ).items():
+                        quantity = data.get("total_quantity", 0)
+                        if quantity <= 0:
+                            continue
+                        commodity = commodities.get(comm_id, {})
+                        current_price = prices.get(comm_id, 0)
+                        inventory_rows.append(
+                            {
+                                "primary": (
+                                    f"{commodity.get('name', comm_id)} "
+                                    f"x{format_number(quantity)}"
+                                ),
+                                "secondary": (
+                                    f"当前价值 "
+                                    f"{format_coins(quantity * current_price)} 金币"
+                                ),
+                                "meta": (
+                                    f"当前单价 {format_coins(current_price)}"
+                                ),
+                            }
+                        )
+                sections = [{"title": "实时行情", "rows": price_rows}]
+                if inventory_rows:
+                    sections.append({"title": "我的持仓", "rows": inventory_rows})
+                image = draw_economy_panel(
+                    "大宗商品交易所",
+                    (
+                        f"{result.get('date', 'N/A')} · "
+                        f"{market_sentiment} · {price_trend} · {supply_demand}"
+                    ),
+                    sections,
+                    "操作：交易所 买入/卖出 商品 数量",
+                )
+                yield event.image_result(
+                    save_economy_image(
+                        image,
+                        "exchange_status",
+                        self.plugin.data_dir,
+                    )
+                )
+                return
+            except Exception as exc:
+                logger.warning(f"交易所绘图失败，回退文本消息: {exc}")
             yield event.plain_result(msg)
         except Exception as e:
             from astrbot.api import logger

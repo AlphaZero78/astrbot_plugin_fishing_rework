@@ -77,6 +77,8 @@ def test_admin_routes_persist_settings_and_item_effects(tmp_path):
                 "item_template_service": item_service,
             },
         )
+        assert app.jinja_env.filters["number"](1.10002432) == "1.1"
+        assert app.jinja_env.filters["percent"](0.02500608) == "2.5"
         app.config["TESTING"] = True
 
         client = app.test_client()

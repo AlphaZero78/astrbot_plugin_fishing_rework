@@ -98,12 +98,12 @@
         <div class="card border-success">
             <div class="card-body text-center">
                 <h5 class="card-title text-success">
-                    <i class="fas fa-coins"></i> 库存总价值: {{ inventory.stats.total_inventory_value }} 金币
+                    <i class="fas fa-coins"></i> 库存总价值: {{ inventory.stats.total_inventory_value|number }} 金币
                 </h5>
                 <p class="card-text">
-                    鱼类价值: {{ inventory.stats.fish_total_value }} 金币 | 
-                    鱼饵价值: {{ inventory.stats.bait_total_value }} 金币 |
-                    道具价值: {{ inventory.stats.item_total_value }} 金币
+                    鱼类价值: {{ inventory.stats.fish_total_value|number }} 金币 |
+                    鱼饵价值: {{ inventory.stats.bait_total_value|number }} 金币 |
+                    道具价值: {{ inventory.stats.item_total_value|number }} 金币
                 </p>
             </div>
         </div>
@@ -173,20 +173,20 @@
                                         <span class="badge bg-secondary">普通</span>
                                     {% endif %}
                                 </td>
-                                <td>{{ item.base_value }}</td>
+                                <td>{{ item.base_value|number }}</td>
                                 <td>
                                     {% if item.quality_level == 1 %}
-                                        <span class="text-warning fw-bold">{{ item.actual_value }}</span>
+                                        <span class="text-warning fw-bold">{{ item.actual_value|number }}</span>
                                     {% else %}
-                                        {{ item.actual_value }}
+                                        {{ item.actual_value|number }}
                                     {% endif %}
                                 </td>
                                 <td>{{ item.quantity }}</td>
                                 <td>
                                     {% if item.quality_level == 1 %}
-                                        <span class="text-warning fw-bold">{{ item.total_value }}</span>
+                                        <span class="text-warning fw-bold">{{ item.total_value|number }}</span>
                                     {% else %}
-                                        {{ item.total_value }}
+                                        {{ item.total_value|number }}
                                     {% endif %}
                                 </td>
                                 <td class="text-end">
@@ -364,7 +364,7 @@
                                 <td>{{ '★' * item.rarity }}</td>
                                 <td>{{ item.cost }}</td>
                                 <td>{{ item.quantity }}</td>
-                                <td>{{ item.total_value }}</td>
+                                <td>{{ item.total_value|number }}</td>
                                 <td class="text-end">
                                     <button class="btn btn-sm btn-danger" onclick="removeItem('bait', {{ item.bait_id }}, {{ item.quantity }})">
                                         <i class="fas fa-trash"></i> 移除
@@ -419,7 +419,7 @@
                                 </td>
                                 <td>{{ item.cost }}</td>
                                 <td>{{ item.quantity }}</td>
-                                <td>{{ item.total_value }}</td>
+                                <td>{{ item.total_value|number }}</td>
                                 <td class="text-end">
                                     <button class="btn btn-sm btn-danger" onclick="removeItem('item', {{ item.item_id }}, {{ item.quantity }})">
                                         <i class="fas fa-trash"></i> 移除
