@@ -36,12 +36,27 @@ from astrbot_plugin_fishing.core.services.game_mechanics_service import GameMech
 class FakeUserRepo:
     def __init__(self, user: User):
         self.user = user
+        self.income_classifications = []
 
     def get_by_id(self, user_id: str):
         return self.user if self.user.user_id == user_id else None
 
     def update(self, user: User):
         self.user = user
+
+    def reclassify_latest_income(
+        self, user_id, gross_amount, balance_after, taxable_amount, source
+    ):
+        self.income_classifications.append(
+            {
+                "user_id": user_id,
+                "gross_amount": gross_amount,
+                "balance_after": balance_after,
+                "taxable_amount": taxable_amount,
+                "source": source,
+            }
+        )
+        return True
 
 
 class FakeLogRepo:
@@ -122,3 +137,48 @@ def test_next_wipe_bomb_uses_and_clears_forecast(monkeypatch):
     assert result["reward"] == 4_000
     assert user.coins == 13_000
     assert user.wipe_bomb_forecast is None
+    assert service.user_repo.income_classifications[-1] == {
+        "user_id": user.user_id,
+        "gross_amount": 3_000,
+        "balance_after": 13_000,
+        "taxable_amount": 3_000,
+        "source": "擦弹净盈利",
+    }
+
+
+def test_wheel_of_fate_taxes_only_profit():
+    user = build_user()
+    user.coins = 9_000
+    user.in_wheel_of_fate = True
+    user.wof_entry_fee = 1_000
+    service = build_service(user)
+
+    service._reset_wof_state(user, cash_out_prize=2_500)
+
+    assert user.coins == 11_500
+    assert service.user_repo.income_classifications[-1] == {
+        "user_id": user.user_id,
+        "gross_amount": 2_500,
+        "balance_after": 11_500,
+        "taxable_amount": 1_500,
+        "source": "命运之轮净盈利",
+    }
+
+
+def test_single_sicbo_taxes_only_profit(monkeypatch):
+    user = build_user()
+    service = build_service(user)
+    rolls = iter([4, 4, 5])
+    monkeypatch.setattr(mechanics_module.random, "randint", lambda low, high: next(rolls))
+
+    result = service.play_sicbo(user.user_id, "大", 1_000)
+
+    assert result["success"] is True
+    assert result["profit"] == 1_000
+    assert service.user_repo.income_classifications[-1] == {
+        "user_id": user.user_id,
+        "gross_amount": 1_000,
+        "balance_after": 11_000,
+        "taxable_amount": 1_000,
+        "source": "骰宝净盈利",
+    }

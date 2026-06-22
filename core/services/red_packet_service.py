@@ -232,6 +232,14 @@ class RedPacketService:
         if user:
             user.coins += amount
             self.user_repo.update(user)
+            if hasattr(self.user_repo, "reclassify_latest_income"):
+                self.user_repo.reclassify_latest_income(
+                    user_id=user_id,
+                    gross_amount=amount,
+                    balance_after=user.coins,
+                    taxable_amount=0,
+                    source="领取红包（免税）",
+                )
         
         # 构建返回消息
         type_name = {

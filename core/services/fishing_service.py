@@ -853,20 +853,17 @@ class FishingService:
                 skipped_user_count += 1
                 continue
 
-            payable_tax = min(tax_amount, max(int(user.coins), 0))
+            payable_tax = tax_amount
             if payable_tax > 0:
                 user.coins -= payable_tax
                 self.user_repo.update(user)
                 total_tax_collected += payable_tax
                 taxed_user_count += 1
 
-            if payable_tax < tax_amount:
-                tax_type += (
-                    f" | 应纳 {tax_amount:,} 金币，余额不足实扣 "
-                    f"{payable_tax:,} 金币"
-                )
-            elif tax_amount == 0:
+            if tax_amount == 0:
                 tax_type += " | 未达到免征额"
+            elif user.coins < 0:
+                tax_type += f" | 税后负余额 {user.coins:,} 金币"
 
             self.log_repo.add_tax_record(
                 TaxRecord(

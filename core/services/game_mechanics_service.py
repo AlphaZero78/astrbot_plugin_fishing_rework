@@ -96,6 +96,23 @@ class GameMechanicsService:
         self._last_suppression_date = None
         self.thread_pool = ThreadPoolExecutor(max_workers=5)
 
+    def _classify_game_income(
+        self,
+        user_id: str,
+        gross_credit: int,
+        balance_after: int,
+        profit: int,
+        source: str,
+    ) -> None:
+        if hasattr(self.user_repo, "reclassify_latest_income"):
+            self.user_repo.reclassify_latest_income(
+                user_id=user_id,
+                gross_amount=max(int(gross_credit), 0),
+                balance_after=balance_after,
+                taxable_amount=max(int(profit), 0),
+                source=source,
+            )
+
     def _check_server_suppression(self) -> bool:
         """检查服务器级别的抑制状态，如果需要则重置"""
         today = get_today()
@@ -358,6 +375,14 @@ class GameMechanicsService:
         
         # 8. 一次性将所有用户数据的变更保存到数据库
         self.user_repo.update(user)
+        if profit > 0:
+            self._classify_game_income(
+                user_id,
+                profit,
+                user.coins,
+                profit,
+                "擦弹净盈利",
+            )
 
         # 9. 记录日志
         log_entry = WipeBombLog(
@@ -413,12 +438,21 @@ class GameMechanicsService:
     
     def _reset_wof_state(self, user: User, cash_out_prize: int = 0) -> None:
         """内部辅助函数，用于重置用户的游戏状态并保存。"""
+        entry_fee = max(int(getattr(user, "wof_entry_fee", 0) or 0), 0)
         if cash_out_prize > 0:
             user.coins += cash_out_prize
         user.in_wheel_of_fate = False
         user.last_wof_play_time = get_now()
         user.wof_last_action_time = None
         self.user_repo.update(user)
+        if cash_out_prize > 0:
+            self._classify_game_income(
+                user.user_id,
+                cash_out_prize,
+                user.coins,
+                max(cash_out_prize - entry_fee, 0),
+                "命运之轮净盈利",
+            )
 
     def handle_wof_timeout(self, user_id: str) -> Dict[str, Any] | None:
         """检查并处理指定用户的游戏超时。如果处理了超时，返回一个结果字典。"""
@@ -1089,6 +1123,14 @@ class GameMechanicsService:
         # 8. 更新用户状态并保存
         user.last_sicbo_time = now
         self.user_repo.update(user)
+        if profit > 0:
+            self._classify_game_income(
+                user_id,
+                profit,
+                user.coins,
+                profit,
+                "骰宝净盈利",
+            )
 
         # 9. 返回详细的游戏结果
         return {

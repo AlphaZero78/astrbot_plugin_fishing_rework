@@ -444,6 +444,14 @@ class SicboService:
                 if user:
                     user.coins += payout
                     self.user_repo.update(user)
+                    if hasattr(self.user_repo, "reclassify_latest_income"):
+                        self.user_repo.reclassify_latest_income(
+                            user_id=bet.user_id,
+                            gross_amount=payout,
+                            balance_after=user.coins,
+                            taxable_amount=max(payout - bet.amount, 0),
+                            source="多人骰宝净盈利",
+                        )
             
             settlement_info.append({
                 "user_id": bet.user_id,
