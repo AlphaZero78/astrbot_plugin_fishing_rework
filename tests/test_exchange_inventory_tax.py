@@ -34,12 +34,27 @@ from core.services.exchange_inventory_service import ExchangeInventoryService
 class FakeUserRepo:
     def __init__(self, user: User):
         self._user = user
+        self.income_classifications = []
 
     def get_by_id(self, user_id: str) -> User | None:
         return self._user if self._user.user_id == user_id else None
 
     def update(self, user: User) -> None:
         self._user = user
+
+    def reclassify_latest_income(
+        self, user_id, gross_amount, balance_after, taxable_amount, source
+    ):
+        self.income_classifications.append(
+            {
+                "user_id": user_id,
+                "gross_amount": gross_amount,
+                "balance_after": balance_after,
+                "taxable_amount": taxable_amount,
+                "source": source,
+            }
+        )
+        return True
 
 
 class FakeExchangeRepo:
@@ -103,7 +118,8 @@ def test_sell_commodity_taxes_only_profit():
     user = _build_user()
     repo = FakeExchangeRepo([_commodity(1, 10, 100)])
     log_repo = FakeLogRepo()
-    service = ExchangeInventoryService(FakeUserRepo(user), repo, {"exchange": {"tax_rate": 0.1}}, log_repo)
+    user_repo = FakeUserRepo(user)
+    service = ExchangeInventoryService(user_repo, repo, {"exchange": {"tax_rate": 0.1}}, log_repo)
 
     result = service.sell_commodity("user-1", "dried_fish", 10, current_price=150)
 
@@ -112,13 +128,16 @@ def test_sell_commodity_taxes_only_profit():
     assert "税基 500" in result["message"]
     assert log_repo.records[-1].original_amount == 500
     assert "毛收入 1,500 金币" in log_repo.records[-1].tax_type
+    assert user_repo.income_classifications[-1]["gross_amount"] == 1450
+    assert user_repo.income_classifications[-1]["taxable_amount"] == 500
 
 
 def test_sell_commodity_with_loss_has_no_tax():
     user = _build_user()
     repo = FakeExchangeRepo([_commodity(1, 5, 200)])
     log_repo = FakeLogRepo()
-    service = ExchangeInventoryService(FakeUserRepo(user), repo, {"exchange": {"tax_rate": 0.2}}, log_repo)
+    user_repo = FakeUserRepo(user)
+    service = ExchangeInventoryService(user_repo, repo, {"exchange": {"tax_rate": 0.2}}, log_repo)
 
     result = service.sell_commodity("user-1", "dried_fish", 5, current_price=150)
 
@@ -126,6 +145,8 @@ def test_sell_commodity_with_loss_has_no_tax():
     assert "本次无税费" in result["message"]
     assert log_repo.records[-1].tax_amount == 0
     assert "未盈利免税" in log_repo.records[-1].tax_type
+    assert user_repo.income_classifications[-1]["gross_amount"] == 750
+    assert user_repo.income_classifications[-1]["taxable_amount"] == 0
 
 
 def test_clear_all_inventory_uses_profit_as_tax_base():
@@ -138,7 +159,8 @@ def test_clear_all_inventory_uses_profit_as_tax_base():
     price_entries = [Exchange(date=today, time="00:00:00", commodity_id="dried_fish", price=200)]
     repo = FakeExchangeRepo(commodities, price_map={today: price_entries})
     log_repo = FakeLogRepo()
-    service = ExchangeInventoryService(FakeUserRepo(user), repo, {"exchange": {"tax_rate": 0.2}}, log_repo)
+    user_repo = FakeUserRepo(user)
+    service = ExchangeInventoryService(user_repo, repo, {"exchange": {"tax_rate": 0.2}}, log_repo)
 
     result = service.clear_all_inventory("user-1")
 
@@ -148,4 +170,6 @@ def test_clear_all_inventory_uses_profit_as_tax_base():
     assert "税基 350" in result["message"]
     assert log_repo.records[-1].original_amount == 350
     assert log_repo.records[-1].tax_amount == 70
+    assert user_repo.income_classifications[-1]["gross_amount"] == 530
+    assert user_repo.income_classifications[-1]["taxable_amount"] == 350
 

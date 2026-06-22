@@ -454,6 +454,14 @@ class UserService:
         # 更新数据库
         self.user_repo.update(from_user)
         self.user_repo.update(to_user)
+        if hasattr(self.user_repo, "reclassify_latest_income"):
+            self.user_repo.reclassify_latest_income(
+                user_id=to_user_id,
+                gross_amount=amount,
+                balance_after=to_user.coins,
+                taxable_amount=0,
+                source="用户转账（免税）",
+            )
         
         # 记录转账税收
         if tax_amount > 0:

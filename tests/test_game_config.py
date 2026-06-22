@@ -11,7 +11,7 @@ def test_build_game_config_uses_central_defaults():
     assert config["fishing"]["cooldown_seconds"] == 180
     assert config["quality_bonus_max_chance"] == 0.35
     assert config["rare_bonus_max_chance"] == DEFAULT_RARE_BONUS_CAP
-    assert config["tax"]["threshold"] == 1_000_000
+    assert config["tax"]["threshold"] == 10_000_000
     assert config["sell_prices"]["rod"]["6"] == 20_000
     assert config["exchange"] == EXCHANGE_DEFAULTS
 

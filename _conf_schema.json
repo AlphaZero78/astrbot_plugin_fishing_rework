@@ -46,10 +46,10 @@
         "default": true
       },
       "threshold": {
-        "description": "每日收入免征额",
+        "description": "每日盈利免征额",
         "type": "int",
-        "hint": "上一12:00-12:00结算周期的总正向金币入账低于此值不收每日收入税",
-        "default": 1000000
+        "hint": "上一12:00-12:00结算周期的应税盈利不超过此值时免征每日所得税",
+        "default": 10000000
       },
       "step_coins": {
         "description": "累进税率级距",

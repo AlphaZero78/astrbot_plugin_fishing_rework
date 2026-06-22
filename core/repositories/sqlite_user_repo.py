@@ -209,9 +209,10 @@ class SqliteUserRepository(AbstractUserRepository):
         with self._get_connection() as conn:
             rows = conn.execute(
                 """
-                SELECT user_id, SUM(amount) AS total_income
+                SELECT user_id, SUM(taxable_amount) AS total_income
                 FROM income_records
                 WHERE timestamp >= ? AND timestamp < ?
+                  AND taxable_amount > 0
                 GROUP BY user_id
                 """,
                 (start_text, end_text),
@@ -220,6 +221,45 @@ class SqliteUserRepository(AbstractUserRepository):
                 str(row["user_id"]): int(row["total_income"] or 0)
                 for row in rows
             }
+
+    def reclassify_latest_income(
+        self,
+        user_id: str,
+        gross_amount: int,
+        balance_after: int,
+        taxable_amount: int,
+        source: str,
+    ) -> bool:
+        """Update the income row emitted by the balance-change trigger."""
+        gross_amount = max(int(gross_amount), 0)
+        taxable_amount = max(min(int(taxable_amount), gross_amount), 0)
+        if gross_amount <= 0:
+            return False
+        with self._get_connection() as conn:
+            cursor = conn.execute(
+                """
+                UPDATE income_records
+                SET taxable_amount = ?, source = ?
+                WHERE income_id = (
+                    SELECT income_id
+                    FROM income_records
+                    WHERE user_id = ?
+                      AND amount = ?
+                      AND balance_after = ?
+                    ORDER BY income_id DESC
+                    LIMIT 1
+                )
+                """,
+                (
+                    taxable_amount,
+                    source,
+                    user_id,
+                    gross_amount,
+                    int(balance_after),
+                ),
+            )
+            conn.commit()
+            return cursor.rowcount == 1
     
     # 其他辅助方法保持不变...
     def get_all_users(self, limit: int = 100, offset: int = 0) -> List[User]:

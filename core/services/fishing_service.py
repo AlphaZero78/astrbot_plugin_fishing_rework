@@ -779,7 +779,7 @@ class FishingService:
         return tax_amount, taxable_income, effective_rate
 
     def apply_daily_taxes(self, period_end=None) -> None:
-        """Analyze and tax gross positive income from the previous period."""
+        """Analyze and tax classified profit from the previous period."""
         import uuid
         
         # 生成执行ID用于追踪和调试
@@ -804,7 +804,7 @@ class FishingService:
             f"{period_start.isoformat()} 至 {period_end.isoformat()}"
         )
         
-        threshold = tax_config.get("threshold", 1000000)
+        threshold = tax_config.get("threshold", 10_000_000)
         step_coins = tax_config.get("step_coins", 100000)
         step_rate = tax_config.get("step_rate", 0.01)
         min_rate = tax_config.get("min_rate", 0.001)
@@ -816,7 +816,7 @@ class FishingService:
             period_start, period_end
         )
         logger.info(
-            f"[税收-{execution_id}] 检测到 {len(income_totals)} 个有正向入账的用户"
+            f"[税收-{execution_id}] 检测到 {len(income_totals)} 个有应税盈利的用户"
         )
         
         total_tax_collected = 0
@@ -844,7 +844,7 @@ class FishingService:
             )
             tax_type = (
                 f"每日收入税 | 周期 {period_label} | "
-                f"总收入 {total_income:,} 金币 | "
+                f"应税盈利 {total_income:,} 金币 | "
                 f"免征额 {threshold:,} 金币 | "
                 f"应税收入 {taxable_income:,} 金币"
             )

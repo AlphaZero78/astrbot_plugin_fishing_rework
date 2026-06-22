@@ -141,7 +141,7 @@ def build_game_config(config: Mapping[str, Any]) -> dict[str, Any]:
         },
         "tax": {
             "is_tax": tax.get("is_tax", True),
-            "threshold": tax.get("threshold", 1000000),
+            "threshold": tax.get("threshold", 10_000_000),
             "step_coins": tax.get("step_coins", 100000),
             "step_rate": tax.get("step_rate", 0.01),
             "min_rate": tax.get("min_rate", 0.001),

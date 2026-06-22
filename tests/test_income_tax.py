@@ -20,29 +20,33 @@ from astrbot_plugin_fishing.core.services.fishing_service import FishingService
 UTC8 = timezone(timedelta(hours=8))
 
 
-def _load_income_migration():
+def _load_migration(filename):
     path = (
         Path(__file__).resolve().parents[1]
         / "core"
         / "database"
         / "migrations"
-        / "049_add_income_ledger.py"
+        / filename
     )
-    spec = importlib.util.spec_from_file_location("income_ledger_migration", path)
+    spec = importlib.util.spec_from_file_location(filename[:-3], path)
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
     return module
 
 
-def test_income_trigger_records_gross_credits_without_expense_offsets(tmp_path):
+def _apply_income_migrations(connection):
+    _load_migration("049_add_income_ledger.py").up(connection.cursor())
+    _load_migration("050_classify_taxable_income.py").up(connection.cursor())
+
+
+def test_income_trigger_records_gross_and_taxable_credits(tmp_path):
     database = tmp_path / "fish.db"
     connection = sqlite3.connect(database)
     connection.execute(
         "CREATE TABLE users (user_id TEXT PRIMARY KEY, coins INTEGER NOT NULL)"
     )
     connection.execute("INSERT INTO users VALUES ('u1', 10000000)")
-    migration = _load_income_migration()
-    migration.up(connection.cursor())
+    _apply_income_migrations(connection)
 
     connection.execute("UPDATE users SET coins = 15000000 WHERE user_id = 'u1'")
     connection.execute("UPDATE users SET coins = 2000000 WHERE user_id = 'u1'")
@@ -50,10 +54,63 @@ def test_income_trigger_records_gross_credits_without_expense_offsets(tmp_path):
     connection.commit()
 
     rows = connection.execute(
-        "SELECT amount FROM income_records ORDER BY income_id"
+        """
+        SELECT amount, taxable_amount
+        FROM income_records
+        ORDER BY income_id
+        """
     ).fetchall()
-    assert rows == [(5_000_000,), (10_000_000,)]
+    assert rows == [(5_000_000, 5_000_000), (10_000_000, 10_000_000)]
     assert sum(row[0] for row in rows) == 15_000_000
+
+
+def test_transfer_credit_can_be_reclassified_as_non_taxable(tmp_path):
+    database = tmp_path / "fish.db"
+    connection = sqlite3.connect(database)
+    connection.execute(
+        "CREATE TABLE users (user_id TEXT PRIMARY KEY, coins INTEGER NOT NULL)"
+    )
+    connection.execute("INSERT INTO users VALUES ('u1', 10000000)")
+    _apply_income_migrations(connection)
+    connection.execute("UPDATE users SET coins = 15000000 WHERE user_id = 'u1'")
+    connection.commit()
+    connection.close()
+
+    repo = SqliteUserRepository(str(database))
+    assert repo.reclassify_latest_income(
+        "u1",
+        gross_amount=5_000_000,
+        balance_after=15_000_000,
+        taxable_amount=0,
+        source="用户转账（免税）",
+    )
+    with sqlite3.connect(database) as check:
+        row = check.execute(
+            """
+            SELECT amount, taxable_amount, source
+            FROM income_records
+            """
+        ).fetchone()
+    assert row == (5_000_000, 0, "用户转账（免税）")
+
+
+def test_upgrade_exempts_unclassified_legacy_income(tmp_path):
+    database = tmp_path / "fish.db"
+    connection = sqlite3.connect(database)
+    connection.execute(
+        "CREATE TABLE users (user_id TEXT PRIMARY KEY, coins INTEGER NOT NULL)"
+    )
+    connection.execute("INSERT INTO users VALUES ('u1', 10000000)")
+    _load_migration("049_add_income_ledger.py").up(connection.cursor())
+    connection.execute("UPDATE users SET coins = 15000000 WHERE user_id = 'u1'")
+    _load_migration("050_classify_taxable_income.py").up(connection.cursor())
+    connection.commit()
+
+    row = connection.execute(
+        "SELECT amount, taxable_amount FROM income_records"
+    ).fetchone()
+    connection.close()
+    assert row == (5_000_000, 0)
 
 
 @pytest.mark.parametrize(
@@ -150,13 +207,13 @@ def test_daily_income_tax_records_period_and_deducts_once(tmp_path):
         VALUES ('u1', 'tester', 5000000, '2026-06-20 00:00:00')
         """
     )
-    _load_income_migration().up(connection.cursor())
+    _apply_income_migrations(connection)
     connection.execute(
         """
         INSERT INTO income_records (
-            user_id, amount, balance_after, source, timestamp
+            user_id, amount, taxable_amount, balance_after, source, timestamp
         )
-        VALUES ('u1', 1200000, 5000000, 'test', ?)
+        VALUES ('u1', 1200000, 1200000, 5000000, 'test', ?)
         """,
         ("2026-06-22 10:00:00+08:00",),
     )
@@ -195,5 +252,5 @@ def test_daily_income_tax_records_period_and_deducts_once(tmp_path):
     assert len(records) == 1
     assert records[0].tax_amount == 1_200
     assert records[0].original_amount == 1_200_000
-    assert "总收入 1,200,000 金币" in records[0].tax_type
+    assert "应税盈利 1,200,000 金币" in records[0].tax_type
     assert "应税收入 200,000 金币" in records[0].tax_type

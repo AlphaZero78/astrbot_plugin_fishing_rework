@@ -77,7 +77,17 @@ class AbstractUserRepository(ABC):
     def get_income_totals(
         self, period_start: datetime, period_end: datetime
     ) -> Dict[str, int]:
-        """Return gross positive coin income by user for a tax period."""
+        """Return classified taxable profit by user for a tax period."""
+        raise NotImplementedError
+    def reclassify_latest_income(
+        self,
+        user_id: str,
+        gross_amount: int,
+        balance_after: int,
+        taxable_amount: int,
+        source: str,
+    ) -> bool:
+        """Classify the trigger-created income row for a known transaction."""
         raise NotImplementedError
 
 class AbstractItemTemplateRepository(ABC):

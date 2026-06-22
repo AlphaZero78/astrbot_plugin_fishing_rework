@@ -34,6 +34,23 @@ class ExchangeInventoryService:
     def apply_config(self, config: Dict[str, Any]) -> None:
         self.config = config.get("exchange", {})
 
+    def _classify_exchange_income(
+        self,
+        user_id: str,
+        gross_credit: int,
+        balance_after: int,
+        taxable_profit: int,
+        source: str,
+    ) -> None:
+        if hasattr(self.user_repo, "reclassify_latest_income"):
+            self.user_repo.reclassify_latest_income(
+                user_id=user_id,
+                gross_amount=gross_credit,
+                balance_after=balance_after,
+                taxable_amount=max(int(taxable_profit), 0),
+                source=source,
+            )
+
     def get_user_commodities(self, user_id: str) -> List[UserCommodity]:
         """获取用户的大宗商品库存"""
         return self.exchange_repo.get_user_commodities(user_id)
@@ -261,6 +278,13 @@ class ExchangeInventoryService:
             # 添加金币
             user.coins += net_income
             self.user_repo.update(user)
+            self._classify_exchange_income(
+                user_id,
+                net_income,
+                user.coins,
+                taxable_profit,
+                f"交易所卖出：{self.commodities[commodity_id]['name']}已实现利润",
+            )
             
             # 记录税费
             if self.log_repo:
@@ -426,6 +450,13 @@ class ExchangeInventoryService:
             # 添加金币
             user.coins += net_income
             self.user_repo.update(user)
+            self._classify_exchange_income(
+                user_id,
+                net_income,
+                user.coins,
+                taxable_profit,
+                "交易所全部清仓已实现利润",
+            )
             
             # 记录税费
             if self.log_repo:
@@ -580,6 +611,13 @@ class ExchangeInventoryService:
             # 添加金币
             user.coins += net_income
             self.user_repo.update(user)
+            self._classify_exchange_income(
+                user_id,
+                net_income,
+                user.coins,
+                taxable_profit,
+                f"交易所清仓：{self.commodities[commodity_id]['name']}已实现利润",
+            )
             
             # 记录税费
             if self.log_repo:
