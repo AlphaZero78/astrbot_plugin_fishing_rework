@@ -103,6 +103,7 @@ class SqliteUserRepository(AbstractUserRepository):
             
             # --- [新功能] 添加交易所账户状态字段的读取 ---
             exchange_account_status=bool(row["exchange_account_status"]) if "exchange_account_status" in row_keys else False,
+            exchange_capacity=row["exchange_capacity"] if "exchange_capacity" in row_keys else 1000,
         )
 
     def get_by_id(self, user_id: str) -> Optional[User]:

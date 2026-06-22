@@ -1082,7 +1082,51 @@ class FishingPlugin(Star):
         async for r in self.exchange_handlers.clear_inventory(event):
             yield r
 
+    @filter.command("盈亏", alias={"持仓盈亏"})
+    async def exchange_profit_loss(self, event: AstrMessageEvent):
+        """查看交易所持仓的浮动盈亏"""
+        async for r in self.exchange_handlers.profit_loss(event):
+            yield r
+
+    @filter.command("推荐", alias={"交易推荐"})
+    async def exchange_recommendation(self, event: AstrMessageEvent):
+        """根据交易所近期行情获取操作建议"""
+        async for r in self.exchange_handlers.recommendation(event):
+            yield r
+
+    @filter.command("风险", alias={"交易风险"})
+    async def exchange_risk(self, event: AstrMessageEvent):
+        """查看交易所仓位风险评估"""
+        async for r in self.exchange_handlers.risk_assessment(event):
+            yield r
+
+    @filter.command("交易所容量", alias={"持仓容量"})
+    async def exchange_capacity(self, event: AstrMessageEvent):
+        """查看交易所容量与下一档升级费用"""
+        async for r in self.exchange_handlers.capacity_status(event):
+            yield r
+
+    @filter.command("升级交易所", alias={"升级交易所容量"})
+    async def upgrade_exchange_capacity(self, event: AstrMessageEvent):
+        """升级个人交易所持仓容量"""
+        async for r in self.exchange_handlers.upgrade_capacity(event):
+            yield r
+
     # =========== 管理后台 ==========
+
+    @filter.permission_type(PermissionType.ADMIN)
+    @filter.command("更新交易所价格", alias={"刷新交易所价格"})
+    async def update_exchange_prices_command(self, event: AstrMessageEvent):
+        """[管理员] 立即执行一次交易所价格更新"""
+        async for r in self.exchange_handlers.admin_update_prices(event):
+            yield r
+
+    @filter.permission_type(PermissionType.ADMIN)
+    @filter.command("重置交易所价格")
+    async def reset_exchange_prices_command(self, event: AstrMessageEvent):
+        """[管理员] 将交易所价格重置为基础价格"""
+        async for r in self.exchange_handlers.admin_reset_prices(event):
+            yield r
 
     @filter.permission_type(PermissionType.ADMIN)
     @filter.command("修改金币")

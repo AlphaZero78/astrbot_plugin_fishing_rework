@@ -2,6 +2,7 @@ from astrbot.api import logger
 from astrbot.api.event import AstrMessageEvent
 from typing import Optional, Dict, Any, TYPE_CHECKING, List
 from datetime import datetime, timedelta
+from math import sqrt
 from ..core.formatting import format_coins, format_number
 from ..draw.economy import draw_economy_panel, save_economy_image
 
@@ -197,6 +198,117 @@ class ExchangeHandlers:
                 "profit_rate": 0,
                 "is_profit": False,
             }
+
+    @staticmethod
+    def _price_metrics(series: List[int]) -> Dict[str, float | str]:
+        if not series:
+            return {
+                "change_rate": 0.0,
+                "volatility": 0.0,
+                "rsi": 50.0,
+                "trend": "stable",
+            }
+        change_rate = (
+            (series[-1] - series[0]) / series[0] * 100
+            if series[0] > 0
+            else 0.0
+        )
+        returns = [
+            (current - previous) / previous
+            for previous, current in zip(series, series[1:])
+            if previous > 0
+        ]
+        if len(returns) >= 2:
+            average = sum(returns) / len(returns)
+            variance = sum(
+                (value - average) ** 2 for value in returns
+            ) / (len(returns) - 1)
+            volatility = sqrt(variance) * 100
+        else:
+            volatility = 0.0
+        gains = sum(
+            max(current - previous, 0)
+            for previous, current in zip(series, series[1:])
+        )
+        losses = sum(
+            max(previous - current, 0)
+            for previous, current in zip(series, series[1:])
+        )
+        if gains + losses == 0:
+            rsi = 50.0
+        elif losses == 0:
+            rsi = 100.0
+        else:
+            rsi = 100 - 100 / (1 + gains / losses)
+        trend = (
+            "rising"
+            if change_rate > 2
+            else "falling" if change_rate < -2 else "stable"
+        )
+        return {
+            "change_rate": change_rate,
+            "volatility": volatility,
+            "rsi": rsi,
+            "trend": trend,
+        }
+
+    @staticmethod
+    def _portfolio_snapshot(
+        items: List[Any],
+        current_prices: Dict[str, int],
+    ) -> Dict[str, Any]:
+        now = datetime.now()
+        total_cost = 0
+        total_value = 0
+        total_quantity = 0
+        expired_quantity = 0
+        expiring_quantity = 0
+        by_commodity: Dict[str, Dict[str, Any]] = {}
+        for item in items:
+            quantity = int(item.quantity)
+            cost = int(item.purchase_price) * quantity
+            expires_at = item.expires_at
+            expired = bool(expires_at and expires_at <= now)
+            expiring = bool(
+                expires_at
+                and not expired
+                and expires_at <= now + timedelta(hours=24)
+            )
+            current_price = int(current_prices.get(item.commodity_id, 0))
+            value = 0 if expired else current_price * quantity
+            total_cost += cost
+            total_value += value
+            total_quantity += quantity
+            expired_quantity += quantity if expired else 0
+            expiring_quantity += quantity if expiring else 0
+            data = by_commodity.setdefault(
+                item.commodity_id,
+                {
+                    "quantity": 0,
+                    "cost": 0,
+                    "value": 0,
+                    "expired_quantity": 0,
+                    "expiring_quantity": 0,
+                },
+            )
+            data["quantity"] += quantity
+            data["cost"] += cost
+            data["value"] += value
+            data["expired_quantity"] += quantity if expired else 0
+            data["expiring_quantity"] += quantity if expiring else 0
+        profit_loss = total_value - total_cost
+        return {
+            "total_cost": total_cost,
+            "total_value": total_value,
+            "profit_loss": profit_loss,
+            "profit_rate": (
+                profit_loss / total_cost * 100 if total_cost > 0 else 0.0
+            ),
+            "total_quantity": total_quantity,
+            "expired_quantity": expired_quantity,
+            "expiring_quantity": expiring_quantity,
+            "by_commodity": by_commodity,
+        }
 
     def _from_base36(self, s: str) -> int:
         """将base36字符串转换为数字"""
@@ -496,6 +608,21 @@ class ExchangeHandlers:
             elif command in ["分析", "analysis"]:
                 async for r in self._view_market_analysis(event):
                     yield r
+            elif command in ["盈亏", "profit", "pnl"]:
+                async for r in self.profit_loss(event):
+                    yield r
+            elif command in ["推荐", "recommend"]:
+                async for r in self.recommendation(event):
+                    yield r
+            elif command in ["风险", "risk"]:
+                async for r in self.risk_assessment(event):
+                    yield r
+            elif command in ["容量", "capacity"]:
+                async for r in self.capacity_status(event):
+                    yield r
+            elif command in ["升级", "升级容量", "upgrade"]:
+                async for r in self.upgrade_capacity(event):
+                    yield r
             elif command in ["统计", "stats"]:
                 yield event.plain_result(self._get_trading_stats_help())
             elif command in ["状态", "status"]:
@@ -515,6 +642,9 @@ class ExchangeHandlers:
 • 交易所: 查看市场状态和价格
 • 交易所 历史: 查看价格历史图表
 • 交易所 分析: 查看市场分析报告
+• 交易所 盈亏: 查看持仓浮动盈亏
+• 交易所 推荐: 获取近7天行情建议
+• 交易所 风险: 查看仓位风险评分
 
 💼 账户管理
 • 交易所 开户: 开通交易所账户
@@ -536,6 +666,12 @@ class ExchangeHandlers:
 • /盈亏: 查看持仓盈亏分析
 • /推荐: 获取投资建议
 • /风险: 查看风险评估
+• 也可使用【交易所 盈亏/推荐/风险】
+
+📦 容量升级
+• /交易所容量: 查看已用容量和下一档费用
+• /升级交易所: 升级个人持仓容量
+• 升级路径: 1000 → 2000 → 5000 → 10000 → 25000
 
 ⏰ 时间信息
 • 价格更新: 每日{schedule_display}
@@ -635,13 +771,29 @@ class ExchangeHandlers:
                     msg += "─" * 20 + "\n"
 
             # 显示持仓容量和盈亏分析
-            capacity = self.plugin.exchange_service.config.get("exchange", {}).get("capacity", 1000)
+            capacity = max(
+                1,
+                getattr(
+                    user,
+                    "exchange_capacity",
+                    self.plugin.exchange_service.config.get(
+                        "exchange", {}
+                    ).get("capacity", 1000),
+                ),
+            )
 
             inventory_result = self.plugin.exchange_service.get_user_inventory(user_id)
             if inventory_result["success"]:
                 inventory = inventory_result["inventory"]
-                current_total_quantity = sum(
-                    data.get("total_quantity", 0) for data in inventory.values()
+                capacity_status = (
+                    self.plugin.exchange_service.get_capacity_status(user_id)
+                )
+                current_total_quantity = capacity_status.get(
+                    "current_quantity",
+                    sum(
+                        data.get("total_quantity", 0)
+                        for data in inventory.values()
+                    ),
                 )
                 capacity_percent = (
                     (current_total_quantity / capacity) * 100 if capacity > 0 else 0
@@ -820,6 +972,266 @@ class ExchangeHandlers:
             logger.error(f"交易所状态查询失败: {e}")
             yield event.plain_result(f"❌ 查询失败: {str(e)}")
 
+    async def profit_loss(self, event: AstrMessageEvent):
+        user_id = self._get_effective_user_id(event)
+        account = self.exchange_service.check_exchange_account(user_id)
+        if not account.get("success"):
+            yield event.plain_result(f"❌ {account['message']}")
+            return
+        status = self.exchange_service.get_market_status()
+        if not status.get("success"):
+            yield event.plain_result("❌ 无法获取当前交易所价格。")
+            return
+        items = self.exchange_service.get_user_commodities(user_id)
+        if not items:
+            yield event.plain_result("📭 当前没有交易所持仓。")
+            return
+        snapshot = self._portfolio_snapshot(items, status["prices"])
+        names = {
+            commodity_id: data["name"]
+            for commodity_id, data in status["commodities"].items()
+        }
+        message = "【💹 持仓盈亏】\n"
+        message += "═" * 28 + "\n"
+        message += f"💰 持仓成本：{snapshot['total_cost']:,} 金币\n"
+        message += f"💎 当前价值：{snapshot['total_value']:,} 金币\n"
+        message += (
+            f"📊 浮动盈亏：{snapshot['profit_loss']:+,} 金币 "
+            f"({snapshot['profit_rate']:+.1f}%)\n"
+        )
+        message += "─" * 28 + "\n"
+        for commodity_id, data in snapshot["by_commodity"].items():
+            profit = data["value"] - data["cost"]
+            rate = profit / data["cost"] * 100 if data["cost"] else 0
+            message += (
+                f"{names.get(commodity_id, commodity_id)} "
+                f"x{data['quantity']}：{profit:+,} ({rate:+.1f}%)"
+            )
+            if data["expired_quantity"]:
+                message += f" · 腐败 {data['expired_quantity']}"
+            elif data["expiring_quantity"]:
+                message += f" · 24小时内到期 {data['expiring_quantity']}"
+            message += "\n"
+        message += "═" * 28 + "\n"
+        message += "提示：浮动盈亏未扣除卖出时可能产生的盈利税。"
+        yield event.plain_result(message)
+
+    async def recommendation(self, event: AstrMessageEvent):
+        user_id = self._get_effective_user_id(event)
+        account = self.exchange_service.check_exchange_account(user_id)
+        if not account.get("success"):
+            yield event.plain_result(f"❌ {account['message']}")
+            return
+        status = self.exchange_service.get_market_status()
+        history_result = self.exchange_service.get_price_history(days=7)
+        if not status.get("success") or not history_result.get("success"):
+            yield event.plain_result("❌ 暂时无法生成行情推荐。")
+            return
+        held: Dict[str, int] = {}
+        for item in self.exchange_service.get_user_commodities(user_id):
+            held[item.commodity_id] = (
+                held.get(item.commodity_id, 0) + item.quantity
+            )
+        message = "【🧭 交易所推荐】\n"
+        message += "依据：近7天趋势、RSI与实际波动率\n"
+        message += "═" * 30 + "\n"
+        for commodity_id, commodity in status["commodities"].items():
+            metrics = self._price_metrics(
+                history_result.get("history", {}).get(commodity_id, [])
+            )
+            if metrics["volatility"] >= 8:
+                action = "降低仓位"
+                reason = "实际波动率较高"
+            elif metrics["trend"] == "rising" and metrics["rsi"] < 70:
+                action = "少量买入"
+                reason = "趋势向上且尚未明显过热"
+            elif metrics["rsi"] >= 75:
+                action = "减仓/观望"
+                reason = "RSI偏高，存在回撤风险"
+            elif metrics["trend"] == "falling":
+                action = "观望"
+                reason = "近7天趋势向下"
+            elif metrics["rsi"] <= 30:
+                action = "关注反弹"
+                reason = "RSI偏低，但不建议一次性重仓"
+            else:
+                action = "持有/观望"
+                reason = "趋势信号不明确"
+            message += (
+                f"{commodity['name']}：{action}\n"
+                f"  变化 {metrics['change_rate']:+.1f}% · "
+                f"波动 {metrics['volatility']:.1f}% · "
+                f"RSI {metrics['rsi']:.0f}"
+            )
+            if held.get(commodity_id):
+                message += f" · 持有 {held[commodity_id]}"
+            message += f"\n  原因：{reason}\n"
+        message += "═" * 30 + "\n"
+        message += "推荐只基于游戏内历史数据，不保证后续价格方向。"
+        yield event.plain_result(message)
+
+    async def risk_assessment(self, event: AstrMessageEvent):
+        user_id = self._get_effective_user_id(event)
+        account = self.exchange_service.check_exchange_account(user_id)
+        if not account.get("success"):
+            yield event.plain_result(f"❌ {account['message']}")
+            return
+        status = self.exchange_service.get_market_status()
+        history_result = self.exchange_service.get_price_history(days=7)
+        capacity = self.exchange_service.get_capacity_status(user_id)
+        if (
+            not status.get("success")
+            or not history_result.get("success")
+            or not capacity.get("success")
+        ):
+            yield event.plain_result("❌ 暂时无法完成风险评估。")
+            return
+        items = self.exchange_service.get_user_commodities(user_id)
+        snapshot = self._portfolio_snapshot(items, status["prices"])
+        total_value = snapshot["total_value"]
+        concentration = (
+            max(
+                (
+                    data["value"] / total_value * 100
+                    for data in snapshot["by_commodity"].values()
+                ),
+                default=0.0,
+            )
+            if total_value > 0
+            else 0.0
+        )
+        usage = (
+            capacity["current_quantity"] / capacity["capacity"] * 100
+            if capacity["capacity"] > 0
+            else 0.0
+        )
+        expiry_rate = (
+            (
+                snapshot["expired_quantity"]
+                + snapshot["expiring_quantity"]
+            )
+            / snapshot["total_quantity"]
+            * 100
+            if snapshot["total_quantity"] > 0
+            else 0.0
+        )
+        held_commodity_ids = set(snapshot["by_commodity"])
+        max_volatility = max(
+            (
+                self._price_metrics(series)["volatility"]
+                for commodity_id, series in history_result.get(
+                    "history", {}
+                ).items()
+                if commodity_id in held_commodity_ids
+            ),
+            default=0.0,
+        )
+        score = 0
+        score += 25 if concentration >= 70 else 12 if concentration >= 50 else 0
+        score += 20 if usage >= 90 else 10 if usage >= 75 else 0
+        score += 25 if expiry_rate >= 30 else 12 if expiry_rate > 0 else 0
+        score += 20 if max_volatility >= 10 else 10 if max_volatility >= 5 else 0
+        score += (
+            15
+            if snapshot["profit_rate"] <= -15
+            else 8 if snapshot["profit_rate"] <= -5 else 0
+        )
+        level = (
+            "极高"
+            if score >= 75
+            else "高" if score >= 50 else "中" if score >= 25 else "低"
+        )
+        message = "【🛡️ 交易所风险评估】\n"
+        message += "═" * 30 + "\n"
+        message += f"风险等级：{level}（{score}/100）\n"
+        message += f"最大单品集中度：{concentration:.1f}%\n"
+        message += (
+            f"容量占用：{capacity['current_quantity']}/"
+            f"{capacity['capacity']}（{usage:.1f}%）\n"
+        )
+        message += f"临期/腐败占比：{expiry_rate:.1f}%\n"
+        message += f"近7天最高实际波动率：{max_volatility:.1f}%\n"
+        message += f"当前浮动盈亏率：{snapshot['profit_rate']:+.1f}%\n"
+        message += "─" * 30 + "\n"
+        suggestions = []
+        if concentration >= 50:
+            suggestions.append("分散单一商品持仓")
+        if usage >= 75:
+            suggestions.append("清理或升级交易所容量")
+        if expiry_rate > 0:
+            suggestions.append("优先处理24小时内到期或已腐败商品")
+        if max_volatility >= 5:
+            suggestions.append("降低高波动商品仓位")
+        if snapshot["profit_rate"] <= -5:
+            suggestions.append("评估止损，避免继续扩大亏损")
+        message += "建议：" + (
+            "；".join(suggestions) if suggestions else "当前风险可控"
+        )
+        yield event.plain_result(message)
+
+    async def capacity_status(self, event: AstrMessageEvent):
+        user_id = self._get_effective_user_id(event)
+        result = self.exchange_service.get_capacity_status(user_id)
+        if not result.get("success"):
+            yield event.plain_result(f"❌ {result['message']}")
+            return
+        message = (
+            f"【📦 交易所容量】\n"
+            f"当前使用：{result['current_quantity']} / "
+            f"{result['capacity']}\n"
+        )
+        if result.get("next_upgrade"):
+            upgrade = result["next_upgrade"]
+            message += (
+                f"下一档：{upgrade['to']} 容量\n"
+                f"升级费用：{upgrade['cost']:,} 金币\n"
+                f"使用：/升级交易所"
+            )
+        else:
+            message += "已达到最大容量。"
+        yield event.plain_result(message)
+
+    async def upgrade_capacity(self, event: AstrMessageEvent):
+        user_id = self._get_effective_user_id(event)
+        result = self.exchange_service.upgrade_capacity(user_id)
+        if not result.get("success"):
+            yield event.plain_result(f"❌ 升级失败：{result['message']}")
+            return
+        yield event.plain_result(
+            f"✅ 交易所容量升级成功："
+            f"{result['old_capacity']} → {result['new_capacity']}，"
+            f"花费 {result['cost']:,} 金币。"
+        )
+
+    async def admin_update_prices(self, event: AstrMessageEvent):
+        result = self.exchange_service.manual_update_prices()
+        if result.get("success"):
+            prices = result.get("prices", {})
+            price_text = "、".join(
+                f"{self.exchange_service.commodities.get(cid, {}).get('name', cid)} "
+                f"{format_coins(price)}"
+                for cid, price in prices.items()
+            )
+            yield event.plain_result(
+                "✅ 交易所价格更新成功"
+                + (f"：{price_text}" if price_text else "。")
+            )
+        else:
+            yield event.plain_result(
+                f"❌ 更新交易所价格失败："
+                f"{result.get('message', '未知错误')}"
+            )
+
+    async def admin_reset_prices(self, event: AstrMessageEvent):
+        result = self.exchange_service.reset_prices_to_initial()
+        if result.get("success"):
+            yield event.plain_result("✅ 交易所价格已重置为当前基础价格。")
+        else:
+            yield event.plain_result(
+                f"❌ 重置交易所价格失败："
+                f"{result.get('message', '未知错误')}"
+            )
+
     async def open_exchange_account(self, event: AstrMessageEvent):
         """开通交易所账户"""
         user_id = self._get_effective_user_id(event)
@@ -941,9 +1353,24 @@ class ExchangeHandlers:
 
             msg += "═" * 30 + "\n"
 
-            capacity = self.exchange_service.config.get("exchange", {}).get("capacity", 1000)
-            current_total_quantity = sum(
-                data.get("total_quantity", 0) for data in inventory.values()
+            user = self.user_repo.get_by_id(user_id)
+            capacity = max(
+                1,
+                getattr(
+                    user,
+                    "exchange_capacity",
+                    self.exchange_service.config.get("exchange", {}).get(
+                        "capacity", 1000
+                    ),
+                ),
+            )
+            capacity_status = self.exchange_service.get_capacity_status(user_id)
+            current_total_quantity = capacity_status.get(
+                "current_quantity",
+                sum(
+                    data.get("total_quantity", 0)
+                    for data in inventory.values()
+                ),
             )
             msg += f"📦 当前持仓: {current_total_quantity} / {capacity}\n"
 

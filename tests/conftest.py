@@ -29,6 +29,14 @@ if "astrbot.api" not in sys.modules:
     sys.modules["astrbot"] = astrbot_module
     sys.modules["astrbot.api"] = api_module
 
+    event_module = types.ModuleType("astrbot.api.event")
+
+    class AstrMessageEvent:
+        pass
+
+    event_module.AstrMessageEvent = AstrMessageEvent
+    sys.modules["astrbot.api.event"] = event_module
+
     core_module = types.ModuleType("astrbot.core")
     core_module.__path__ = []
     message_module = types.ModuleType("astrbot.core.message")

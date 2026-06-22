@@ -99,7 +99,14 @@ class ExchangeInventoryService:
                 logger.info(f"用户 {user_id} 清理了 {cleared_count} 个腐败商品")
             
             # 检查容量限制
-            capacity = self.config.get("capacity", 1000)
+            capacity = max(
+                1,
+                getattr(
+                    user,
+                    "exchange_capacity",
+                    self.config.get("capacity", 1000),
+                ),
+            )
             current_quantity = self._get_user_total_commodity_quantity(user_id)
             
             if current_quantity + quantity > capacity:

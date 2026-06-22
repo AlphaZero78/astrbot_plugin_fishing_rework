@@ -42,6 +42,11 @@ def test_fresh_database_bootstraps_complete_playable_catalog(tmp_path):
     setup.setup_initial_data()
 
     connection = sqlite3.connect(database)
+    user_columns = {
+        row[1] for row in connection.execute("PRAGMA table_info(users)")
+    }
+    assert "exchange_capacity" in user_columns
+    assert connection.execute("SELECT version FROM schema_version").fetchone()[0] == 47
     assert connection.execute("SELECT COUNT(*) FROM fish").fetchone()[0] > 100
     assert connection.execute("SELECT COUNT(*) FROM baits").fetchone()[0] == 14
     assert connection.execute("SELECT COUNT(*) FROM rods").fetchone()[0] == 6

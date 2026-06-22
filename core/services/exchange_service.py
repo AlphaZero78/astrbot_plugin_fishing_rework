@@ -69,6 +69,70 @@ class ExchangeService:
         """检查交易所账户状态"""
         return self.account_service.check_exchange_account(user_id)
 
+    def get_capacity_status(self, user_id: str) -> Dict[str, Any]:
+        user = self.user_repo.get_by_id(user_id)
+        if not user:
+            return {"success": False, "message": "用户不存在"}
+        if not user.exchange_account_status:
+            return {
+                "success": False,
+                "message": "请先使用「交易所 开户」开通账户",
+            }
+        current_quantity = (
+            self.inventory_service._get_user_total_commodity_quantity(user_id)
+        )
+        capacity = max(
+            1,
+            getattr(
+                user,
+                "exchange_capacity",
+                self.config.get("exchange", {}).get("capacity", 1000),
+            ),
+        )
+        next_upgrade = next(
+            (
+                item
+                for item in self.config.get("exchange", {}).get(
+                    "capacity_upgrades", []
+                )
+                if item.get("from") == capacity
+            ),
+            None,
+        )
+        return {
+            "success": True,
+            "current_quantity": current_quantity,
+            "capacity": capacity,
+            "next_upgrade": next_upgrade,
+        }
+
+    def upgrade_capacity(self, user_id: str) -> Dict[str, Any]:
+        status = self.get_capacity_status(user_id)
+        if not status.get("success"):
+            return status
+        next_upgrade = status.get("next_upgrade")
+        if not next_upgrade:
+            return {
+                "success": False,
+                "message": "交易所容量已达到最大，无法再升级",
+            }
+        user = self.user_repo.get_by_id(user_id)
+        cost = int(next_upgrade["cost"])
+        if user.coins < cost:
+            return {
+                "success": False,
+                "message": f"金币不足，升级需要 {cost:,} 金币",
+            }
+        user.coins -= cost
+        user.exchange_capacity = int(next_upgrade["to"])
+        self.user_repo.update(user)
+        return {
+            "success": True,
+            "old_capacity": status["capacity"],
+            "new_capacity": user.exchange_capacity,
+            "cost": cost,
+        }
+
     # 库存管理相关方法
     def get_user_commodities(self, user_id: str) -> List:
         """获取用户的大宗商品库存"""

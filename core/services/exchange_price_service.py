@@ -286,7 +286,10 @@ class ExchangePriceService:
         """计算新价格"""
         # 获取商品配置
         commodity_config = self.config.get("commodities", {}).get(commodity_id, {})
-        volatility = commodity_config.get("volatility", 0.1)
+        volatility = self.config.get("volatility", {}).get(
+            commodity_id,
+            commodity_config.get("volatility", 0.1),
+        )
         max_change_rate = self.config.get("max_change_rate", 0.2)
         
         # 随机调整
@@ -299,9 +302,12 @@ class ExchangePriceService:
         # 计算新价格
         new_price = int(current_price * (1 + change_rate))
         
-        # 确保价格不会过低
-        min_price = max(1, int(current_price * 0.1))
-        new_price = max(min_price, new_price)
+        min_price = max(1, int(self.config.get("min_price", 1)))
+        max_price = max(
+            min_price,
+            int(self.config.get("max_price", 1000000)),
+        )
+        new_price = max(min_price, min(max_price, new_price))
         
         return new_price
 

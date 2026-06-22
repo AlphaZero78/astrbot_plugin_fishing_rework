@@ -29,6 +29,12 @@ EXCHANGE_DEFAULTS = {
     "market_sentiment": "neutral",
     "price_trend": "stable",
     "supply_demand": "平衡",
+    "capacity_upgrades": [
+        {"from": 1000, "to": 2000, "cost": 200000},
+        {"from": 2000, "to": 5000, "cost": 1000000},
+        {"from": 5000, "to": 10000, "cost": 5000000},
+        {"from": 10000, "to": 25000, "cost": 25000000},
+    ],
     "initial_prices": {
         "dried_fish": 6000,
         "fish_roe": 12000,
