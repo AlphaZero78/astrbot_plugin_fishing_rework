@@ -7,7 +7,12 @@ from astrbot.api.event import filter, AstrMessageEvent
 from astrbot.core.star.filter.permission import PermissionType
 from astrbot.api.message_components import At, Node, Plain
 
-from ..utils import parse_target_user_id, _is_port_available, parse_amount
+from ..utils import (
+    calculate_percentage_reward,
+    parse_target_user_id,
+    _is_port_available,
+    parse_amount,
+)
 from ..manager.server import create_app
 from typing import TYPE_CHECKING
 
@@ -143,32 +148,75 @@ async def deduct_premium(plugin: "FishingPlugin", event: AstrMessageEvent):
 
 async def reward_all_coins(plugin: "FishingPlugin", event: AstrMessageEvent):
     """给所有注册用户发放金币"""
-    args = event.message_str.split(" ")
+    args = event.message_str.split()
     if len(args) < 2:
-        yield event.plain_result("❌ 请指定奖励的金币数量，例如：/全体奖励金币 1000 或 /全体奖励金币 一万")
+        yield event.plain_result(
+            "❌ 请指定固定金额或持有金币百分比，例如："
+            "/全体奖励金币 1000、/全体奖励金币 一万、"
+            "/全体奖励金币 10%"
+        )
         return
-    
-    try:
-        amount_int = parse_amount(args[1])
-        if amount_int <= 0:
-            yield event.plain_result("❌ 奖励数量必须是正整数，请检查后重试。")
+
+    reward_spec = args[1]
+    percentage_mode = reward_spec.endswith(("%", "％"))
+    amount_int = None
+    if percentage_mode:
+        try:
+            calculate_percentage_reward(1, reward_spec)
+        except ValueError as e:
+            yield event.plain_result(f"❌ 百分比格式错误：{str(e)}")
             return
-    except ValueError as e:
-        yield event.plain_result(f"❌ 数量格式错误：{str(e)}")
-        return
+    else:
+        try:
+            amount_int = parse_amount(reward_spec)
+            if amount_int <= 0:
+                yield event.plain_result("❌ 奖励数量必须是正整数，请检查后重试。")
+                return
+        except ValueError as e:
+            yield event.plain_result(f"❌ 数量格式错误：{str(e)}")
+            return
+
     user_ids = plugin.user_repo.get_all_user_ids()
     if not user_ids:
         yield event.plain_result("❌ 当前没有注册用户。")
         return
+
     updated = 0
+    rounded_to_zero = 0
+    total_reward = 0
     for uid in user_ids:
         user = plugin.user_repo.get_by_id(uid)
         if not user:
             continue
-        user.coins += amount_int
+        reward = (
+            calculate_percentage_reward(user.coins, reward_spec)
+            if percentage_mode
+            else amount_int
+        )
+        if reward <= 0:
+            rounded_to_zero += 1
+            continue
+        user.coins += reward
         plugin.user_repo.update(user)
         updated += 1
-    yield event.plain_result(f"✅ 已向 {updated} 位用户每人发放 {amount_int} 金币")
+        total_reward += reward
+
+    if percentage_mode:
+        message = (
+            f"✅ 已按每位用户原持有金币的 {reward_spec.replace('％', '%')} "
+            f"发放奖励，奖励向下取整\n"
+            f"👥 实际发放：{updated} 人\n"
+            f"💰 发放总额：{total_reward:,} 金币"
+        )
+        if rounded_to_zero:
+            message += f"\nℹ️ 取整后为 0：{rounded_to_zero} 人"
+        yield event.plain_result(message)
+        return
+
+    yield event.plain_result(
+        f"✅ 已向 {updated} 位用户每人发放 {amount_int} 金币，"
+        f"共发放 {total_reward:,} 金币"
+    )
 
 
 async def reward_all_premium(plugin: "FishingPlugin", event: AstrMessageEvent):

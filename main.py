@@ -1161,7 +1161,7 @@ class FishingPlugin(Star):
     @filter.permission_type(PermissionType.ADMIN)
     @filter.command("全体奖励金币")
     async def reward_all_coins(self, event: AstrMessageEvent):
-        """[管理员] 给所有玩家奖励金币。用法：全体奖励金币 数量"""
+        """[管理员] 给全体发固定金币或按持有金币百分比发放。"""
         async for r in admin_handlers.reward_all_coins(self, event):
             yield r
 

@@ -1,5 +1,10 @@
 import pytest
-from astrbot_plugin_fishing.utils import parse_amount
+from decimal import Decimal
+from astrbot_plugin_fishing.utils import (
+    calculate_percentage_reward,
+    parse_amount,
+    parse_percentage_rate,
+)
 
 
 def test_parse_plain_number():
@@ -26,3 +31,16 @@ def test_invalid():
         parse_amount("")
     with pytest.raises(ValueError):
         parse_amount("abc")
+
+
+def test_percentage_reward_rounds_down():
+    assert parse_percentage_rate("10%") == Decimal("0.1")
+    assert parse_percentage_rate("2.5％") == Decimal("0.025")
+    assert calculate_percentage_reward(12_345, "2.5%") == 308
+    assert calculate_percentage_reward(9, "10%") == 0
+
+
+@pytest.mark.parametrize("value", ["0%", "-1%", "abc%", "10"])
+def test_invalid_percentage(value):
+    with pytest.raises(ValueError):
+        parse_percentage_rate(value)

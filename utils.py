@@ -1,4 +1,5 @@
 import re
+from decimal import Decimal, InvalidOperation, ROUND_FLOOR
 import socket
 import os
 import platform
@@ -506,6 +507,34 @@ def parse_amount(amount_str: str) -> int:
         pass
 
     raise ValueError(f"无法解析的金额: {amount_str}")
+
+
+def parse_percentage_rate(percentage_str: str) -> Decimal:
+    """Parse a positive percentage such as ``10%`` or ``2.5％``."""
+    if not isinstance(percentage_str, str):
+        raise ValueError("百分比必须是字符串")
+
+    value = percentage_str.strip().replace("％", "%")
+    if not value.endswith("%"):
+        raise ValueError("百分比必须以 % 结尾")
+
+    try:
+        percentage = Decimal(value[:-1].strip())
+    except InvalidOperation as exc:
+        raise ValueError("无法解析百分比") from exc
+
+    if not percentage.is_finite() or percentage <= 0:
+        raise ValueError("百分比必须大于 0")
+    return percentage / Decimal("100")
+
+
+def calculate_percentage_reward(current_coins: int, percentage_str: str) -> int:
+    """Calculate a percentage reward, rounded down to a whole coin."""
+    rate = parse_percentage_rate(percentage_str)
+    balance = max(int(current_coins), 0)
+    return int(
+        (Decimal(balance) * rate).to_integral_value(rounding=ROUND_FLOOR)
+    )
 
 
 def parse_count(count_str: str) -> int:
