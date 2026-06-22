@@ -36,43 +36,43 @@
     }
   },
   "tax": {
-    "description": "税收系统配置",
+    "description": "每日个人收入税与转账税配置",
     "type": "object",
     "items": {
       "is_tax": {
         "description": "是否启用税收",
         "type": "bool",
-        "hint": "税收的开关",
+        "hint": "控制每天固定时间执行的个人收入税，转账、市场和交易所税率使用各自配置",
         "default": true
       },
       "threshold": {
-        "description": "税收的起征点",
+        "description": "每日收入免征额",
         "type": "int",
-        "hint": "税收的起征点，低于此值不收税",
+        "hint": "上一12:00-12:00结算周期的总正向金币入账低于此值不收每日收入税",
         "default": 1000000
       },
       "step_coins": {
-        "description": "税收的步长",
+        "description": "累进税率级距",
         "type": "int",
-        "hint": "税收的步长，超过起征点后每增加此值税率增加",
+        "hint": "超过免征额后，每增加此金额进入下一级边际税率",
         "default": 100000
       },
       "step_rate": {
-        "description": "税收的步长税率",
+        "description": "每级税率增量",
         "type": "float",
-        "hint": "税收的步长税率，超过起征点后每增加step_coins税率增加",
+        "hint": "每进入一个新级距时，边际税率增加的比例",
         "default": 0.01
       },
       "min_rate": {
-        "description": "税收的起点税率",
+        "description": "首级边际税率",
         "type": "float",
-        "hint": "税收的初始税率，达到起征点后开始收税的初始税率",
+        "hint": "超过免征额后的第一个级距适用的边际税率",
         "default": 0.001
       },
       "max_rate": {
-        "description": "税收的最大税率",
+        "description": "最高边际税率",
         "type": "float",
-        "hint": "税收的最大税率，超过此值不再增加",
+        "hint": "累进计算中单个级距可达到的最高边际税率",
         "default": 0.2
       },
       "transfer_tax_rate": {
@@ -166,7 +166,7 @@
       "daily_reset_hour": {
         "description": "每日刷新时间点",
         "type": "int",
-        "hint": "每日重置鱼塘配额、税收等的时间点（小时，0-23），默认为0表示0点刷新",
+        "hint": "每日重置鱼塘配额等常规任务的时间（小时，0-23）；收入税固定每天12:00结算，不受此项影响",
         "default": 0
       },
       "wheel_of_fate_daily_limit": {

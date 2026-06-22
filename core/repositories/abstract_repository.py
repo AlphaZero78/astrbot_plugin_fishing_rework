@@ -74,6 +74,11 @@ class AbstractUserRepository(ABC):
     # 删除用户
     @abstractmethod
     def delete_user(self, user_id: str) -> bool: pass
+    def get_income_totals(
+        self, period_start: datetime, period_end: datetime
+    ) -> Dict[str, int]:
+        """Return gross positive coin income by user for a tax period."""
+        raise NotImplementedError
 
 class AbstractItemTemplateRepository(ABC):
     """物品模板数据仓储接口"""
@@ -509,6 +514,8 @@ class AbstractLogRepository(ABC):
     # 检查某个用户今天是否已经被征收过每日资产税
     @abstractmethod
     def has_user_daily_tax_today(self, user_id: str, reset_hour: int = 0) -> bool: pass
+    def has_tax_record_type(self, user_id: str, tax_type: str) -> bool:
+        raise NotImplementedError
     # 获取用户历史上最大的擦弹倍数
     @abstractmethod
     def get_max_wipe_bomb_multiplier(self, user_id: str) -> float: pass

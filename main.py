@@ -244,7 +244,9 @@ class FishingPlugin(Star):
         tax_was_enabled = self.is_tax
         self.is_tax = game_config["tax"]["is_tax"]
         if hasattr(self, "fishing_service"):
-            self.fishing_service.daily_reset_hour = game_config["daily_reset_hour"]
+            self.fishing_service.reschedule_daily_tax_task(
+                game_config["daily_reset_hour"]
+            )
             if self.is_tax and not tax_was_enabled:
                 self.fishing_service.start_daily_tax_task()
             elif tax_was_enabled and not self.is_tax:

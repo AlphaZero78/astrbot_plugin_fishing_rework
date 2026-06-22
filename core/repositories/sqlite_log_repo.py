@@ -373,10 +373,13 @@ class SqliteLogRepository(AbstractLogRepository):
                 DELETE FROM taxes
                 WHERE user_id = ?
                   AND tax_id NOT IN (
-                    -- 保留所有30天内的每日资产税（核心记录，必须保留）
+                    -- 保留所有30天内的每日税收（核心记录，必须保留）
                     SELECT tax_id FROM taxes
                     WHERE user_id = ?
-                      AND tax_type = '每日资产税'
+                      AND (
+                        tax_type = '每日资产税'
+                        OR tax_type LIKE '每日收入税 |%'
+                      )
                       AND timestamp >= ?
                     UNION
                     -- 保留最近50条其他税收记录
@@ -385,6 +388,7 @@ class SqliteLogRepository(AbstractLogRepository):
                         FROM taxes
                         WHERE user_id = ?
                           AND tax_type != '每日资产税'
+                          AND tax_type NOT LIKE '每日收入税 |%'
                         ORDER BY timestamp DESC, tax_id DESC
                         LIMIT 50
                     )
@@ -452,6 +456,19 @@ class SqliteLogRepository(AbstractLogRepository):
             """, (user_id, last_reset))
             result = cursor.fetchone()
             return result[0] > 0 if result else False
+
+    def has_tax_record_type(self, user_id: str, tax_type: str) -> bool:
+        with self._get_connection() as conn:
+            row = conn.execute(
+                """
+                SELECT 1 FROM taxes
+                WHERE user_id = ?
+                  AND (tax_type = ? OR tax_type LIKE ?)
+                LIMIT 1
+                """,
+                (user_id, tax_type, f"{tax_type} |%"),
+            ).fetchone()
+            return row is not None
 
     def get_max_wipe_bomb_multiplier(self, user_id: str) -> float:
         with self._get_connection() as conn:

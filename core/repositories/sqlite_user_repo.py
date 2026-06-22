@@ -200,6 +200,26 @@ class SqliteUserRepository(AbstractUserRepository):
             cursor = conn.cursor()
             cursor.execute("SELECT * FROM users WHERE coins >= ?", (threshold,))
             return [self._row_to_user(row) for row in cursor.fetchall()]
+
+    def get_income_totals(
+        self, period_start: datetime, period_end: datetime
+    ) -> Dict[str, int]:
+        start_text = period_start.isoformat(sep=" ")
+        end_text = period_end.isoformat(sep=" ")
+        with self._get_connection() as conn:
+            rows = conn.execute(
+                """
+                SELECT user_id, SUM(amount) AS total_income
+                FROM income_records
+                WHERE timestamp >= ? AND timestamp < ?
+                GROUP BY user_id
+                """,
+                (start_text, end_text),
+            ).fetchall()
+            return {
+                str(row["user_id"]): int(row["total_income"] or 0)
+                for row in rows
+            }
     
     # 其他辅助方法保持不变...
     def get_all_users(self, limit: int = 100, offset: int = 0) -> List[User]:

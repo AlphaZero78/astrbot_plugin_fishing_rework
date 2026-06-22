@@ -63,7 +63,10 @@ class FishingService:
         # 税收线程相关属性
         self.tax_thread: Optional[threading.Thread] = None
         self.tax_running = False
-        self.last_tax_reset_time = get_last_reset_time(self.daily_reset_hour)
+        self.daily_tax_hour = 12
+        self.tax_schedule_event = threading.Event()
+        self.tax_lock_name = "daily_asset_tax"
+        self.tax_lock_ttl_seconds = 300
         self.tax_execution_lock = threading.Lock()  # 防止税收并发执行的锁
         self.tax_start_lock = threading.Lock()  # 防止重复创建税收线程的锁
         self.rare_fish_reset_lock = threading.Lock()  # 防止稀有鱼重置并发执行的锁
@@ -739,8 +742,44 @@ class FishingService:
 
         return {"success": True, "message": success_message}
 
-    def apply_daily_taxes(self) -> None:
-        """对所有高价值用户征收每日税收。逐用户检查，确保不遗漏也不重复征收。"""
+    @staticmethod
+    def _calculate_progressive_income_tax(
+        total_income: int,
+        threshold: int,
+        step_coins: int,
+        step_rate: float,
+        min_rate: float,
+        max_rate: float,
+    ) -> tuple[int, int, float]:
+        """Calculate marginal progressive tax above the exemption."""
+        income = max(int(total_income), 0)
+        taxable_income = max(income - max(int(threshold), 0), 0)
+        if taxable_income <= 0:
+            return 0, 0, 0.0
+
+        bracket_size = max(int(step_coins), 1)
+        starting_rate = max(float(min_rate), 0.0)
+        rate_increment = max(float(step_rate), 0.0)
+        rate_cap = max(float(max_rate), 0.0)
+        remaining = taxable_income
+        bracket_index = 0
+        tax = 0.0
+        while remaining > 0:
+            bracket_income = min(remaining, bracket_size)
+            bracket_rate = min(
+                starting_rate + bracket_index * rate_increment,
+                rate_cap,
+            )
+            tax += bracket_income * bracket_rate
+            remaining -= bracket_income
+            bracket_index += 1
+
+        tax_amount = int(tax)
+        effective_rate = tax_amount / income if income > 0 else 0.0
+        return tax_amount, taxable_income, effective_rate
+
+    def apply_daily_taxes(self, period_end=None) -> None:
+        """Analyze and tax gross positive income from the previous period."""
         import uuid
         
         # 生成执行ID用于追踪和调试
@@ -751,61 +790,98 @@ class FishingService:
             logger.info(f"[税收-{execution_id}] 税收功能未启用，跳过")
             return
         
-        logger.info(f"[税收-{execution_id}] 开始检查每日资产税（执行ID: {execution_id}）")
+        if period_end is None:
+            period_end = get_now().replace(
+                hour=self.daily_tax_hour,
+                minute=0,
+                second=0,
+                microsecond=0,
+            )
+        period_start = period_end - timedelta(days=1)
+
+        logger.info(
+            f"[税收-{execution_id}] 开始分析上一周期收入："
+            f"{period_start.isoformat()} 至 {period_end.isoformat()}"
+        )
         
         threshold = tax_config.get("threshold", 1000000)
-        step_coins = tax_config.get("step_coins", 1000000)
+        step_coins = tax_config.get("step_coins", 100000)
         step_rate = tax_config.get("step_rate", 0.01)
         min_rate = tax_config.get("min_rate", 0.001)
         max_rate = tax_config.get("max_rate", 0.2)
         
-        logger.info(f"[税收-{execution_id}] 税收配置：起征点={threshold}, 步长={step_coins}, 步长税率={step_rate*100}%, 最小税率={min_rate*100}%, 最大税率={max_rate*100}%")
+        logger.info(f"[税收-{execution_id}] 收入税配置：免征额={threshold}, 级距={step_coins}, 税率增量={step_rate*100}%, 首级税率={min_rate*100}%, 最高边际税率={max_rate*100}%")
 
-        high_value_users = self.user_repo.get_high_value_users(threshold)
-        logger.info(f"[税收-{execution_id}] 检测到 {len(high_value_users)} 个达到税收阈值的用户，开始逐个检查")
+        income_totals = self.user_repo.get_income_totals(
+            period_start, period_end
+        )
+        logger.info(
+            f"[税收-{execution_id}] 检测到 {len(income_totals)} 个有正向入账的用户"
+        )
         
         total_tax_collected = 0
         taxed_user_count = 0
         skipped_user_count = 0
 
-        for user in high_value_users:
-            # 检查该用户今天是否已经被征收过税
-            if self.log_repo.has_user_daily_tax_today(user.user_id, self.daily_reset_hour):
-                logger.debug(f"[税收-{execution_id}] 用户 {user.user_id} 今日已缴税，跳过")
+        period_label = (
+            f"{period_start.strftime('%Y-%m-%d %H:%M')}~"
+            f"{period_end.strftime('%Y-%m-%d %H:%M')}"
+        )
+        for user_id, total_income in income_totals.items():
+            user = self.user_repo.get_by_id(user_id)
+            if not user:
+                continue
+
+            tax_amount, taxable_income, effective_rate = (
+                self._calculate_progressive_income_tax(
+                    total_income,
+                    threshold,
+                    step_coins,
+                    step_rate,
+                    min_rate,
+                    max_rate,
+                )
+            )
+            tax_type = (
+                f"每日收入税 | 周期 {period_label} | "
+                f"总收入 {total_income:,} 金币 | "
+                f"免征额 {threshold:,} 金币 | "
+                f"应税收入 {taxable_income:,} 金币"
+            )
+            if self.log_repo.has_tax_record_type(user_id, tax_type):
+                logger.debug(f"[税收-{execution_id}] 用户 {user_id} 本周期已结算，跳过")
                 skipped_user_count += 1
                 continue
-            
-            tax_rate = 0.0
-            # 根据资产确定税率
-            if user.coins >= threshold:
-                steps = (user.coins - threshold) // step_coins
-                tax_rate = min_rate + steps * step_rate
-                if tax_rate > max_rate:
-                    tax_rate = max_rate
-            min_tax_amount = 1
-            if tax_rate > 0:
-                tax_amount = max(int(user.coins * tax_rate), min_tax_amount)
-                original_coins = user.coins
-                user.coins -= tax_amount
 
+            payable_tax = min(tax_amount, max(int(user.coins), 0))
+            if payable_tax > 0:
+                user.coins -= payable_tax
                 self.user_repo.update(user)
+                total_tax_collected += payable_tax
+                taxed_user_count += 1
 
-                tax_log = TaxRecord(
-                    tax_id=0, # DB会自增
-                    user_id=user.user_id,
-                    tax_amount=tax_amount,
-                    tax_rate=tax_rate,
-                    original_amount=original_coins,
+            if payable_tax < tax_amount:
+                tax_type += (
+                    f" | 应纳 {tax_amount:,} 金币，余额不足实扣 "
+                    f"{payable_tax:,} 金币"
+                )
+            elif tax_amount == 0:
+                tax_type += " | 未达到免征额"
+
+            self.log_repo.add_tax_record(
+                TaxRecord(
+                    tax_id=0,
+                    user_id=user_id,
+                    tax_amount=payable_tax,
+                    tax_rate=effective_rate,
+                    original_amount=total_income,
                     balance_after=user.coins,
                     timestamp=get_now(),
-                    tax_type="每日资产税"
+                    tax_type=tax_type,
                 )
-                self.log_repo.add_tax_record(tax_log)
-                
-                total_tax_collected += tax_amount
-                taxed_user_count += 1
-        
-        logger.info(f"[税收-{execution_id}] 每日资产税执行完成，征税 {taxed_user_count} 人，跳过 {skipped_user_count} 人（已缴税），总计 {total_tax_collected} 金币")
+            )
+
+        logger.info(f"[税收-{execution_id}] 每日收入税执行完成，征税 {taxed_user_count} 人，跳过 {skipped_user_count} 人（已结算），总计 {total_tax_collected} 金币")
 
     def enforce_zone_pass_requirements_for_all_users(self) -> None:
         """
@@ -992,7 +1068,7 @@ class FishingService:
                 conn.rollback()
                 return False
         except Exception as e:
-            logger.warning(f"自动钓鱼运行锁获取失败，将跳过本轮: {e}")
+            logger.warning(f"后台任务运行锁获取失败，将跳过本轮: {e}")
             return False
 
     def _release_runtime_lock(self, lock_name: str) -> None:
@@ -1006,10 +1082,10 @@ class FishingService:
                     (lock_name, self.auto_fishing_owner_id),
                 )
         except Exception as e:
-            logger.debug(f"自动钓鱼运行锁释放失败: {e}")
+            logger.debug(f"后台任务运行锁释放失败: {e}")
 
     def start_daily_tax_task(self):
-        """启动每日税收的独立后台线程。"""
+        """Start the scheduler without collecting missed taxes on startup."""
         # 使用锁确保线程创建检查和创建操作的原子性，防止重复创建线程
         with self.tax_start_lock:
             if self.tax_thread and self.tax_thread.is_alive():
@@ -1018,67 +1094,82 @@ class FishingService:
 
             logger.info("正在启动每日税收线程...")
             self.tax_running = True
+            self.tax_schedule_event.clear()
             self.tax_thread = threading.Thread(target=self._daily_tax_loop, daemon=True)
             self.tax_thread.start()
-            logger.info(f"税收线程已启动，每日重置时间点：{self.daily_reset_hour}点")
+            logger.info(f"税收线程已启动，每日固定结算时间：{self.daily_tax_hour}:00")
 
     def stop_daily_tax_task(self):
         """停止每日税收的后台线程。"""
         self.tax_running = False
+        self.tax_schedule_event.set()
         if self.tax_thread:
             self.tax_thread.join(timeout=1.0)
             logger.info("税收线程已停止")
 
+    def reschedule_daily_tax_task(self, reset_hour: int) -> None:
+        """Apply general reset changes while keeping income tax fixed at noon."""
+        self.daily_reset_hour = int(reset_hour) % 24
+        self.tax_schedule_event.set()
+
+    def _seconds_until_next_daily_tax(self) -> float:
+        """Return seconds until the next future configured collection time."""
+        now = get_now()
+        next_tax_time = now.replace(
+            hour=self.daily_tax_hour,
+            minute=0,
+            second=0,
+            microsecond=0,
+        )
+        if next_tax_time <= now:
+            next_tax_time += timedelta(days=1)
+        return max((next_tax_time - now).total_seconds(), 0.0)
+
     def _daily_tax_loop(self):
-        """每日税收独立循环任务，由后台线程执行。"""
-        try:
-            logger.info(f"[税收线程] 线程已进入运行循环，每日重置时间点：{self.daily_reset_hour}点")
-            logger.info(f"[税收线程] 上次税收重置时间：{self.last_tax_reset_time}")
-        except Exception as e:
-            logger.error(f"[税收线程] 初始化日志输出失败: {e}")
-        
-        # 立即执行第一次检查，避免在重置时间点后重启时错过当天的税收
-        first_check = True
-        
+        """Collect only at the next fixed daily time; never backfill on startup."""
+        logger.info(
+            f"[税收线程] 已进入固定调度，每日 {self.daily_tax_hour:02d}:00 执行，"
+            "启动时不补征"
+        )
+
         while self.tax_running:
             try:
-                # 第一次检查不sleep，之后每小时检查一次
-                if not first_check:
-                    time.sleep(3600)
-                
-                # 检查是否到达每日重置时间点
-                current_reset_time = get_last_reset_time(self.daily_reset_hour)
-                
-                # 判断是否需要执行税收检查：
-                # 1. 时间点变更（跨天了）- 新的一天开始，需要检查所有用户
-                # 2. 或者首次启动 - 检查是否有遗漏的用户（逐用户检查会自动跳过已缴税的用户）
-                should_execute = False
-                
-                if current_reset_time != self.last_tax_reset_time:
-                    # 时间点变更，新的一天开始
-                    logger.info(f"[税收线程] 检测到刷新时间点变更（每日{self.daily_reset_hour}点刷新），从 {self.last_tax_reset_time} 到 {current_reset_time}")
-                    should_execute = True
-                    self.last_tax_reset_time = current_reset_time
-                elif first_check:
-                    # 首次检查，检查是否有遗漏的用户（逐用户检查会自动避免重复扣税）
-                    logger.info(f"[税收线程] 首次检查，将检查所有高资产用户的缴税情况（已缴税用户会自动跳过）")
-                    should_execute = True
-                
-                # 首次检查完成后，标记为非首次
-                first_check = False
-                
-                if should_execute:
-                    # 使用锁来防止并发执行税收（多层防护的第一层）
-                    with self.tax_execution_lock:
-                        logger.info("[税收线程] 已获取税收执行锁，开始执行税收")
-                        self.apply_daily_taxes()
-                        logger.info("[税收线程] 每日税收执行完成，释放锁")
-                
+                wait_seconds = self._seconds_until_next_daily_tax()
+                logger.info(
+                    f"[税收线程] 距离下次 {self.daily_tax_hour:02d}:00 "
+                    f"结算还有 {int(wait_seconds)} 秒"
+                )
+                schedule_changed = self.tax_schedule_event.wait(wait_seconds)
+                if schedule_changed:
+                    self.tax_schedule_event.clear()
+                    continue
+                if not self.tax_running:
+                    break
+
+                with self.tax_execution_lock:
+                    if not self._acquire_runtime_lock(
+                        self.tax_lock_name,
+                        self.tax_lock_ttl_seconds,
+                    ):
+                        logger.info("[税收线程] 另一实例正在执行每日资产税，本实例跳过")
+                        continue
+                    try:
+                        period_end = get_now().replace(
+                            hour=self.daily_tax_hour,
+                            minute=0,
+                            second=0,
+                            microsecond=0,
+                        )
+                        logger.info("[税收线程] 到达固定结算时间，开始分析上一周期收入")
+                        self.apply_daily_taxes(period_end=period_end)
+                    finally:
+                        self._release_runtime_lock(self.tax_lock_name)
             except Exception as e:
                 logger.error(f"[税收线程] 出错: {e}")
                 import traceback
                 logger.error(traceback.format_exc())
-                time.sleep(600)  # 出错后等待10分钟再重试
+                self.tax_schedule_event.wait(600)
+                self.tax_schedule_event.clear()
         
         logger.info("[税收线程] 线程循环已退出")
 
