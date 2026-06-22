@@ -23,6 +23,7 @@ from ..mechanics import (
     apply_rare_bonus,
     clamp_probability,
     consumes_bait_per_attempt,
+    high_rarity_weights,
     quality_bonus_chance,
     roll_catch_count,
 )
@@ -162,7 +163,7 @@ class FishingService:
         quantity_modifier = 1.0 # 数量加成
         catch_value_weight_modifier = 1.0 # 渔获重量与基础价值修正
         rare_chance = 0.0 # 稀有鱼出现几率
-        coins_chance = 0.0 # 增加同稀有度高金币出现几率
+        coins_chance = 0.0  # 旧接口兼容值，不再影响同星级鱼类出率
 
         # --- 新增：应用 Buff 效果 ---
         active_buffs = self.buff_repo.get_all_active_by_user(user_id)
@@ -661,8 +662,13 @@ class FishingService:
             # 如果没有6星及以上的鱼，返回5星
             return 5
             
-        # 从高稀有度中随机选择一个
-        return random.choice(list(high_rarities))
+        rarities = sorted(high_rarities)
+        weights_by_rarity = high_rarity_weights(rarities)
+        return random.choices(
+            rarities,
+            weights=[weights_by_rarity[rarity] for rarity in rarities],
+            k=1,
+        )[0]
 
     def set_user_fishing_zone(self, user_id: str, zone_id: int) -> Dict[str, Any]:
         """

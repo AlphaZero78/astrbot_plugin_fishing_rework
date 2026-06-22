@@ -16,6 +16,7 @@ from astrbot_plugin_fishing.core.analytics.expected_value import (
 )
 from astrbot_plugin_fishing.core.mechanics import (
     expected_catch_count,
+    high_rarity_weights,
     roll_catch_count,
 )
 
@@ -36,16 +37,18 @@ def test_quality_bonus_matches_runtime_logarithmic_formula():
     assert quality_bonus_chance(8.0, 0.35) == pytest.approx(0.35)
 
 
-def test_weighted_fish_value_uses_base_value_as_weight():
-    assert weighted_fish_value([10, 20]) == pytest.approx(50 / 3)
-    assert weighted_fish_value([10, 20], 0) == pytest.approx(15)
+def test_within_rarity_fish_selection_is_uniform():
+    assert weighted_fish_value([10, 20]) == pytest.approx(15)
+    assert weighted_fish_value([50, 500000, 1000000]) == pytest.approx(
+        500016.6666666667
+    )
 
 
 def test_weighted_fish_metrics_tracks_garbage_probability():
     expected, probability, contribution = weighted_fish_metrics([1, 9])
-    assert expected == pytest.approx(8.2)
-    assert probability == pytest.approx(0.1)
-    assert contribution == pytest.approx(0.1)
+    assert expected == pytest.approx(5)
+    assert probability == pytest.approx(0.5)
+    assert contribution == pytest.approx(0.5)
 
 
 def test_garbage_reduction_models_one_reroll():
@@ -54,8 +57,32 @@ def test_garbage_reduction_models_one_reroll():
         {1: [1, 9]},
         FishingScenario(success_rate=1, garbage_reduction=1),
     )
-    # 8.2 + 10% * (8.2 - 1.0)
-    assert result["expected_base_value_on_success"] == pytest.approx(8.92)
+    # 5.0 + 50% * (5.0 - 1.0)
+    assert result["expected_base_value_on_success"] == pytest.approx(7.0)
+
+
+def test_high_rarity_weights_decay_by_half_per_star():
+    weights = high_rarity_weights([8, 6, 7])
+    assert weights == {6: 1.0, 7: 0.5, 8: 0.25}
+    total = sum(weights.values())
+    assert weights[6] / total == pytest.approx(4 / 7)
+    assert weights[7] / total == pytest.approx(2 / 7)
+    assert weights[8] / total == pytest.approx(1 / 7)
+
+
+def test_expected_return_uses_decreasing_high_rarity_weights():
+    result = expected_fishing_return(
+        [0, 0, 0, 0, 0, 1],
+        {
+            6: [60],
+            7: [700],
+            8: [50, 500000, 1000000],
+        },
+        FishingScenario(success_rate=1),
+    )
+    expected_eight = (50 + 500000 + 1000000) / 3
+    expected = 60 * 4 / 7 + 700 * 2 / 7 + expected_eight * 1 / 7
+    assert result["expected_base_value_on_success"] == pytest.approx(expected)
 
 
 def test_expected_fishing_return_combines_runtime_multipliers():

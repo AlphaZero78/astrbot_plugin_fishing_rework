@@ -3,6 +3,7 @@
 from .bait import bait_cost_per_attempt, consumes_bait_per_attempt
 from .catch import (
     apply_rare_bonus,
+    high_rarity_weights,
     clamp_probability,
     expected_catch_count,
     normalize_distribution,
@@ -12,6 +13,7 @@ from .catch import (
 
 __all__ = [
     "apply_rare_bonus",
+    "high_rarity_weights",
     "bait_cost_per_attempt",
     "clamp_probability",
     "consumes_bait_per_attempt",

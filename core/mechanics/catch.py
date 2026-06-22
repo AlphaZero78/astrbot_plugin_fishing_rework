@@ -47,6 +47,21 @@ def apply_rare_bonus(
     return normalize_distribution(adjusted)
 
 
+def high_rarity_weights(
+    rarities: Sequence[int],
+    decay: float = 0.5,
+) -> dict[int, float]:
+    """Return geometrically decreasing weights for available 6+ rarities."""
+    available = sorted({int(rarity) for rarity in rarities if rarity >= 6})
+    if not available:
+        return {}
+    decay_factor = min(max(float(decay), 0.0), 1.0)
+    return {
+        rarity: decay_factor ** (rarity - 6)
+        for rarity in available
+    }
+
+
 def quality_bonus_chance(quality_modifier: float, cap: float = 0.35) -> float:
     """Convert a multiplicative quality bonus to its high-quality probability."""
     modifier = max(float(quality_modifier), 0.0)

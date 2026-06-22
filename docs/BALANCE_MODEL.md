@@ -10,7 +10,8 @@ analysis therefore uses:
 - 70% success rate
 - no rod, accessory, bait, buff, quality bonus, or rare bonus
 - 180 second cooldown
-- the real within-rarity fish selection weights
+- uniform fish selection within each concrete rarity
+- geometrically decreasing 6+ rarity weights (`1, 1/2, 1/4, ...`)
 - the real zone fish mappings
 
 The baseline target is roughly 6x to 8x gross return, centered near 7x.

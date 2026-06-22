@@ -10,7 +10,7 @@ from ..mechanics import (
     apply_rare_bonus,
     clamp_probability,
     expected_catch_count,
-    normalize_distribution,
+    high_rarity_weights as default_high_rarity_weights,
     quality_bonus_chance,
 )
 
@@ -41,15 +41,12 @@ def weighted_fish_value(
     base_values: Iterable[float],
     value_weight_exponent: float = 1.0,
 ) -> float:
-    """Expected base value for the runtime's within-rarity weighted draw."""
+    """Expected base value for the runtime's uniform within-rarity draw."""
     values = [max(float(value), 0.0) for value in base_values]
     if not values:
         raise ValueError("base_values cannot be empty")
 
-    exponent = max(float(value_weight_exponent), 0.0)
-    weights = [max(value, 1.0) ** exponent for value in values]
-    total_weight = sum(weights)
-    return sum(value * weight for value, weight in zip(values, weights)) / total_weight
+    return sum(values) / len(values)
 
 
 def weighted_fish_metrics(
@@ -61,24 +58,15 @@ def weighted_fish_metrics(
     values = [max(float(value), 0.0) for value in base_values]
     if not values:
         raise ValueError("base_values cannot be empty")
-    exponent = max(float(value_weight_exponent), 0.0)
-    weights = [max(value, 1.0) ** exponent for value in values]
-    total_weight = sum(weights)
-    expected = sum(value * weight for value, weight in zip(values, weights))
-    garbage_weight = sum(
-        weight
-        for value, weight in zip(values, weights)
-        if value < garbage_threshold
-    )
-    garbage_contribution = sum(
-        value * weight
-        for value, weight in zip(values, weights)
-        if value < garbage_threshold
-    )
+    total_count = len(values)
+    expected = sum(values)
+    garbage_values = [
+        value for value in values if value < garbage_threshold
+    ]
     return (
-        expected / total_weight,
-        garbage_weight / total_weight,
-        garbage_contribution / total_weight,
+        expected / total_count,
+        len(garbage_values) / total_count,
+        sum(garbage_values) / total_count,
     )
 
 
@@ -105,7 +93,7 @@ def expected_fishing_return(
     )
     if high_rarities:
         if high_rarity_weights is None:
-            high_weights = {rarity: 1.0 for rarity in high_rarities}
+            high_weights = default_high_rarity_weights(high_rarities)
         else:
             high_weights = {
                 rarity: max(float(high_rarity_weights.get(rarity, 0.0)), 0.0)
