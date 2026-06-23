@@ -16,7 +16,7 @@ from ..repositories.abstract_repository import (
     AbstractLogRepository,
     AbstractUserBuffRepository,
 )
-from ..domain.models import FishingRecord, TaxRecord, FishingZone
+from ..domain.models import FishingRecord, TaxRecord, FishingZone, UserBuff
 from ..services.fishing_zone_service import FishingZoneService
 from ..utils import get_now, get_fish_template, get_today, get_last_reset_time, calculate_after_refine
 from ..mechanics import (
@@ -91,6 +91,97 @@ class FishingService:
     def set_exchange_service(self, exchange_service) -> None:
         """Attach exchange liquidation support after service construction."""
         self.exchange_service = exchange_service
+
+    def chum_bait(
+        self, user_id: str, bait_id: int, quantity: int
+    ) -> Dict[str, Any]:
+        """Consume bait to grant 10% of its effects for quantity seconds."""
+        if quantity <= 0:
+            return {"success": False, "message": "打窝数量必须大于 0"}
+
+        user = self.user_repo.get_by_id(user_id)
+        if not user:
+            return {"success": False, "message": "用户不存在"}
+
+        bait = self.item_template_repo.get_bait_by_id(bait_id)
+        if not bait:
+            return {"success": False, "message": "鱼饵不存在"}
+
+        inventory = self.inventory_repo.get_user_bait_inventory(user_id)
+        owned = int(inventory.get(bait_id, 0))
+        if owned < quantity:
+            return {
+                "success": False,
+                "message": (
+                    f"鱼饵不足，当前拥有 {bait.name} x{owned}，"
+                    f"需要 x{quantity}"
+                ),
+            }
+
+        payload = {
+            "bait_id": bait_id,
+            "bait_name": bait.name,
+            "success_rate_modifier": bait.success_rate_modifier * 0.1,
+            "rare_chance_modifier": bait.rare_chance_modifier * 0.1,
+            "garbage_reduction_modifier": (
+                bait.garbage_reduction_modifier * 0.1
+            ),
+            "value_modifier": 1.0 + (bait.value_modifier - 1.0) * 0.1,
+            "quantity_modifier": (
+                1.0 + (bait.quantity_modifier - 1.0) * 0.1
+            ),
+        }
+        now = get_now().replace(tzinfo=None)
+        existing = self.buff_repo.get_active_by_user_and_type(
+            user_id, "CHUMMING_BOOST"
+        )
+        if existing:
+            try:
+                current = json.loads(existing.payload or "{}")
+            except (json.JSONDecodeError, TypeError):
+                current = {}
+            if int(current.get("bait_id", -1)) == bait_id:
+                start_time = max(now, existing.expires_at or now)
+                existing.expires_at = start_time + timedelta(
+                    seconds=quantity
+                )
+            else:
+                existing.expires_at = now + timedelta(seconds=quantity)
+            existing.payload = json.dumps(payload, ensure_ascii=False)
+            self.buff_repo.update(existing)
+            expires_at = existing.expires_at
+        else:
+            expires_at = now + timedelta(seconds=quantity)
+            self.buff_repo.add(
+                UserBuff(
+                    id=None,
+                    user_id=user_id,
+                    buff_type="CHUMMING_BOOST",
+                    payload=json.dumps(payload, ensure_ascii=False),
+                    started_at=now,
+                    expires_at=expires_at,
+                )
+            )
+
+        self.inventory_repo.update_bait_quantity(
+            user_id, bait_id, -quantity
+        )
+        remaining = owned - quantity
+        duration = max(int((expires_at - now).total_seconds()), 0)
+        return {
+            "success": True,
+            "message": (
+                f"🪱 已使用 {bait.name} x{quantity} 打窝\n"
+                f"效果：鱼饵基础效果的 10%\n"
+                f"剩余持续时间：{duration} 秒\n"
+                f"剩余鱼饵：{remaining}"
+            ),
+            "bait_id": bait_id,
+            "quantity": quantity,
+            "duration_seconds": duration,
+            "remaining": remaining,
+            "effects": payload,
+        }
 
     @staticmethod
     def _clamp_probability(value: Any, default: float = 0.0) -> float:
@@ -172,6 +263,7 @@ class FishingService:
         catch_value_weight_modifier = 1.0 # 渔获重量与基础价值修正
         rare_chance = 0.0 # 稀有鱼出现几率
         coins_chance = 0.0  # 旧接口兼容值，不再影响同星级鱼类出率
+        garbage_reduction_modifier = 0.0
 
         # --- 新增：应用 Buff 效果 ---
         active_buffs = self.buff_repo.get_all_active_by_user(user_id)
@@ -189,6 +281,26 @@ class FishingService:
                     )
                 except (json.JSONDecodeError, TypeError):
                     logger.error(f"解析 buff payload 失败: {buff.payload}")
+            elif buff.buff_type == "CHUMMING_BOOST":
+                try:
+                    payload = json.loads(buff.payload) if buff.payload else {}
+                    base_success_rate += float(
+                        payload.get("success_rate_modifier", 0.0)
+                    )
+                    rare_chance += float(
+                        payload.get("rare_chance_modifier", 0.0)
+                    )
+                    garbage_reduction_modifier += float(
+                        payload.get("garbage_reduction_modifier", 0.0)
+                    )
+                    catch_value_weight_modifier *= float(
+                        payload.get("value_modifier", 1.0)
+                    )
+                    quantity_modifier *= float(
+                        payload.get("quantity_modifier", 1.0)
+                    )
+                except (ValueError, json.JSONDecodeError, TypeError):
+                    logger.error(f"解析打窝 buff payload 失败: {buff.payload}")
         # --- Buff 应用结束 ---
 
         logger.debug(
@@ -215,7 +327,6 @@ class FishingService:
         logger.debug(f"装备饰品加成后： quality_modifier={quality_modifier}, quantity_modifier={quantity_modifier}, catch_value_weight_modifier={catch_value_weight_modifier}, rare_chance={rare_chance}, coins_chance={coins_chance}")
         # 获取鱼饵并应用加成
         cur_bait_id = user.current_bait_id
-        garbage_reduction_modifier = None
 
         # 判断鱼饵是否过期
         if user.current_bait_id is not None:
@@ -276,11 +387,16 @@ class FishingService:
                 quantity_modifier *= bait_template.quantity_modifier
                 rare_chance += bait_template.rare_chance_modifier
                 base_success_rate += bait_template.success_rate_modifier
-                garbage_reduction_modifier = bait_template.garbage_reduction_modifier
+                garbage_reduction_modifier += (
+                    bait_template.garbage_reduction_modifier
+                )
                 catch_value_weight_modifier *= bait_template.value_modifier
         base_success_rate = self._clamp_probability(base_success_rate, 0.7)
         rare_bonus_cap = self._clamp_probability(self.config.get("rare_bonus_max_chance", 0.30), 0.30)
         rare_chance = min(self._clamp_probability(rare_chance), rare_bonus_cap)
+        garbage_reduction_modifier = self._clamp_probability(
+            garbage_reduction_modifier
+        )
         logger.debug(f"使用鱼饵加成后： base_success_rate={base_success_rate}, quality_modifier={quality_modifier}, quantity_modifier={quantity_modifier}, catch_value_weight_modifier={catch_value_weight_modifier}, rare_chance={rare_chance}, coins_chance={coins_chance}")
         # 3. 判断是否成功钓到
         if random.random() >= base_success_rate:
@@ -330,7 +446,7 @@ class FishingService:
              return {"success": False, "message": "错误：当前条件下没有可钓的鱼！"}
 
         # 如果有垃圾鱼减少修正，则应用，价值 < 5则被视为垃圾鱼
-        if garbage_reduction_modifier is not None and fish_template.base_value < 5:
+        if garbage_reduction_modifier > 0 and fish_template.base_value < 5:
             # 根据垃圾鱼减少修正值决定是否重新选择一次
             if random.random() < garbage_reduction_modifier:
                 # 重新选择一条鱼

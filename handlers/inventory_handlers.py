@@ -298,6 +298,7 @@ async def bait(plugin: "FishingPlugin", event: AstrMessageEvent):
                 message += f"   - 效果: {bait['effect_description']}\n"
             message += "\n"
         message += "💡 出售多余鱼饵：/出售鱼饵 [编号] [数量|all]，售价为默认价格的20%\n"
+        message += "🪱 打窝：/打窝 [鱼饵编号] [数量]，获得10%效果并持续数量秒\n"
         yield event.plain_result(message)
     else:
         yield event.plain_result("🐟 您还没有鱼饵，快去商店购买或抽奖获得吧！")
@@ -708,6 +709,44 @@ async def use_bait(plugin: "FishingPlugin", event: AstrMessageEvent):
             yield event.plain_result(f"❌ 使用鱼饵失败：{result['message']}")
     else:
         yield event.plain_result("❌ 出错啦！请稍后再试。")
+
+
+async def chum_bait(plugin: "FishingPlugin", event: AstrMessageEvent):
+    """使用指定数量的鱼饵打窝。"""
+    user_id = plugin._get_effective_user_id(event)
+    args = event.message_str.split()
+    if len(args) < 3:
+        yield event.plain_result(
+            "❌ 用法：/打窝 [鱼饵编号] [数量]\n"
+            "示例：/打窝 B14 60 或 /打窝 14 六十"
+        )
+        return
+
+    bait_token = args[1].strip().upper()
+    if bait_token.startswith("B"):
+        bait_token = bait_token[1:]
+    if not bait_token.isdigit():
+        yield event.plain_result(
+            "❌ 鱼饵编号必须是数字或 B 开头的短码，例如：14 或 B14"
+        )
+        return
+
+    try:
+        quantity = parse_amount(args[2])
+    except ValueError as exc:
+        yield event.plain_result(f"❌ 无法解析数量：{exc}")
+        return
+    if quantity <= 0:
+        yield event.plain_result("❌ 打窝数量必须是正整数")
+        return
+
+    result = plugin.fishing_service.chum_bait(
+        user_id, int(bait_token), quantity
+    )
+    if result["success"]:
+        yield event.plain_result(result["message"])
+    else:
+        yield event.plain_result(f"❌ 打窝失败：{result['message']}")
 
 
 async def refine_equipment(plugin: "FishingPlugin", event: AstrMessageEvent, equipment_type: str = None):

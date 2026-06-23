@@ -20,7 +20,11 @@ def build_default_zone_fish_mappings(
             for fish in fish_list
             if 1 <= int(fish.rarity) <= 5
         ],
-        3: [fish.fish_id for fish in fish_list],
+        3: [
+            fish.fish_id
+            for fish in fish_list
+            if str(getattr(fish, "name", "")) != "数学分析?"
+        ],
         4: [
             fish.fish_id
             for fish in fish_list

@@ -25,6 +25,22 @@ def test_default_zone_mapping_rules_are_data_driven():
     assert mappings[4] == [1, 3, 4, 5, 6]
 
 
+def test_math_analysis_is_only_added_to_the_intended_default_zone():
+    fishes = [
+        SimpleNamespace(
+            fish_id=113,
+            name="数学分析?",
+            rarity=8,
+            base_value=50,
+        )
+    ]
+
+    mappings = build_default_zone_fish_mappings(fishes)
+
+    assert 113 not in mappings[3]
+    assert mappings[4] == [113]
+
+
 class _InventoryRepo:
     def __init__(self):
         self.mappings = {1: [99], 2: [], 3: [], 4: []}

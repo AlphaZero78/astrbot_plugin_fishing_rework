@@ -111,7 +111,8 @@ FISH_DATA = [('普通石头', '就是一块普通的石头，沉甸甸的。', 1
  ('原始之母', '诞生于太古时代的原始生命体，蕴含着创世的力量。', 7, 100000, 50000, 150000, None),
  ('深渊之眼', '克苏鲁神话中的古老存在，仅仅凝视就能让人发疯。', 7, 120000, 10000, 30000, None),
  ('世界之鱼', '传说中承载着整个世界的巨鱼，它的一次摆尾能引起海啸。', 8, 500000, 1000000, 5000000, None),
- ('创世神鳞', '创造万物的神明遗留的鳞片，拥有无穷的创造力。', 8, 1000000, 1, 2, None)]
+ ('创世神鳞', '创造万物的神明遗留的鳞片，拥有无穷的创造力。', 8, 1000000, 1, 2, None),
+ ('数学分析?', '一本书,但不值钱', 8, 50, 300, 500, None)]
 
 # BAIT_DATA ???????
 # ??: (name, description, rarity, effect_description, duration_minutes, cost, required_rod_rarity,
@@ -130,15 +131,15 @@ BAIT_DATA = [('面包团', '用面包捏成的简单鱼饵。', 1, '本次钓鱼
  ('价值连城饵', '散发着财富的气息。', 4, '本次渔获重量和基础售价 +20%', 0, 700, 3, 0.0, 0.0, 0.0, 1.2, 1.0, True),
  ('大师拟饵', '由钓鱼大师制作的完美拟饵。', 4, '本次钓鱼成功率 +20%；不会因钓鱼消耗', 0, 1000, 3, 0.2, 0.0, 0.0, 1.0, 1.0, False),
  ('巨物诱饵', '蕴含着远古力量，能吸引庞然大物。', 5, '本次渔获重量和基础售价 +35%', 0, 2500, 4, 0.0, 0.0, 0.0, 1.35, 1.0, True),
- ('!?鱼饵?!', '效果极强但成本高昂的实验鱼饵。', 6, '本次成功率 +25%，稀有鱼权重 +25%，垃圾鱼重抽率90%，重量和基础售价 ×1.3，渔获数量倍率 ×1.05', 0, 10000, 5, 0.25, 0.25, 0.9, 1.3, 1.05, True)]
+ ('!?鱼饵?!', '神秘的鱼饵', 6, '本次成功率 +25%，稀有鱼权重 +25%，垃圾鱼重抽率90%，重量和基础售价 ×1.3，渔获数量倍率 ×1.05', 0, 10000, 5, 0.25, 0.25, 0.9, 1.3, 1.05, True)]
 
 ROD_DATA = [
     # Format: (name, description, rarity, source, purchase_cost, quality_mod, quantity_mod, rare_mod, durability, icon_url)
     ("新手木竿", "刚入门时的可靠伙伴", 1, "shop", 50, 1.0, 1.0, 0.0, 100, None),
     ("竹制鱼竿", "轻巧耐用", 2, "shop", 500, 1.02, 1.01, 0.01, 100, None),
     ("碳素纤维竿", "现代工艺的结晶", 3, "shop", 5000, 1.032, 1.016, 0.016, 1000, None),
-    ("星辰钓者", "蕴含星光力量的神秘鱼竿", 4, "gacha", None, 1.0512, 1.0256, 0.0256, None, None),
-    ("海神之赐", "传说中海神波塞冬使用过的鱼竿", 5, "gacha", None, 1.075776, 1.037888, 0.037888, None, None),
+    ("星辰钓者", "蕴含星光力量的神秘鱼竿", 4, "gacha", 80000, 1.0512, 1.0256, 0.0256, None, None),
+    ("海神之赐", "传说中海神波塞冬使用过的鱼竿", 5, "gacha", 300000, 1.075776, 1.037888, 0.037888, None, None),
     ("源矿钓竿", "以源矿核心驱动的高阶钓竿，能稳定放大多项渔获收益。", 6, "gacha", 1000000, 1.10002432, 1.05001216, 0.05001216, None, None),
 ]
 
@@ -177,8 +178,8 @@ TITLE_DATA = [
 ]
 
 GACHA_POOL = [(4, '标准寻访', '低成本常驻补给，主要承担基础金币回收。', 13, 0, False, None),
- (5, '【限定】开服庆典寻访', '鱼竿与鱼饵限定池，按目录价值控制长期回报。', 1000, 0, True, '2026-06-21T12:00'),
- (6, '【限定】开服庆典申领', '饰品与鱼饵限定池，按出售基准与实用价值控制回报。', 1000, 0, True, '2026-06-21T12:00'),
+ (5, '开服庆典寻访', '鱼竿与鱼饵限定池，按目录价值控制长期回报。', 1000, 0, False, None),
+ (6, '开服庆典申领', '饰品与鱼饵限定池，按出售基准与实用价值控制回报。', 1000, 0, False, None),
  (7, '高级物资调度', '高阶装备、鱼饵与功能道具常驻池。', 20000, 0, False, None)]
 
 # ??: (gacha_pool_id, item_type, item_id, quantity, weight)
@@ -445,7 +446,8 @@ ITEM_DATA = [
     ),
 ]
 
-SHOP_DATA = [(1, '标准商店', '', 'normal', True, None, None, None, None, 100)]
+SHOP_DATA = [(1, '标准商店', '', 'normal', True, None, None, None, None, 100),
+ (2, '特别兑换', '能换到什么呢?', 'premium', True, None, None, None, None, 100)]
 
 # ??: (item_id, shop_id, name, description, category, stock_total, per_user_limit,
 #        per_user_daily_limit, is_active, start_time, end_time, sort_order)
@@ -460,7 +462,13 @@ SHOP_ITEM_DATA = [(1, 1, '面包团', '用面包捏成的简单鱼饵。', 'bait
  (9, 1, '万能饵', '精心调配，对大多数鱼类都有效果。', 'bait', None, None, None, True, None, None, 90),
  (10, 1, '驱散垃圾饵', '散发着垃圾鱼讨厌的气味。', 'bait', None, None, None, True, None, None, 100),
  (11, 1, '竹制鱼竿', '轻巧耐用', 'rod', None, None, None, True, None, None, 110),
- (12, 1, '碳素纤维竿', '现代工艺的结晶', 'rod', None, None, None, True, None, None, 120)]
+ (12, 1, '碳素纤维竿', '现代工艺的结晶', 'rod', None, None, None, True, None, None, 120),
+ (13, 2, '源矿钓竿', '以源矿核心驱动的高阶钓竿，能稳定放大多项渔获收益。', 'general', None, 1, None, True, None, None, 100),
+ (14, 2, '探鱼器', '扫描水域回波，帮助渔夫发现更高品质的目标。', 'general', None, 1, None, True, None, None, 100),
+ (15, 2, '诱鱼器', '释放稳定诱鱼波段，吸引更稀有的鱼靠近。', 'general', None, 1, None, True, None, None, 100),
+ (16, 2, '电鱼器', '以可控电脉冲扰动鱼群，提高一次钓获的丰富度。', 'general', None, 1, None, True, None, None, 100),
+ (17, 2, '源矿钓竿', '以源矿核心驱动的高阶钓竿，能稳定放大多项渔获收益。', 'general', None, None, None, True, None, None, 100),
+ (18, 2, '海洋之心', '传说中的宝石，能与海洋生物沟通', 'general', None, None, None, True, None, None, 100)]
 
 # ??: (item_id, cost_type, cost_amount, cost_item_id, cost_relation, group_id, quality_level)
 SHOP_ITEM_COST_DATA = [(1, 'coins', 3, None, 'and', None, 0),
@@ -474,7 +482,13 @@ SHOP_ITEM_COST_DATA = [(1, 'coins', 3, None, 'and', None, 0),
  (9, 'coins', 100, None, 'and', None, 0),
  (10, 'coins', 250, None, 'and', None, 0),
  (11, 'coins', 500, None, 'and', None, 0),
- (12, 'coins', 5000, None, 'and', None, 0)]
+ (12, 'coins', 5000, None, 'and', None, 0),
+ (13, 'premium', 7, None, 'and', None, 0),
+ (14, 'premium', 7, None, 'and', None, 0),
+ (15, 'premium', 7, None, 'and', None, 0),
+ (16, 'premium', 7, None, 'and', None, 0),
+ (17, 'fish', 1, 113, 'and', None, 0),
+ (18, 'premium', 3, None, 'and', None, 0)]
 
 # ??: (item_id, reward_type, reward_item_id, reward_quantity, reward_refine_level, quality_level)
 SHOP_ITEM_REWARD_DATA = [(1, 'bait', 1, 1, None, 0),
@@ -488,4 +502,10 @@ SHOP_ITEM_REWARD_DATA = [(1, 'bait', 1, 1, None, 0),
  (9, 'bait', 8, 1, None, 0),
  (10, 'bait', 9, 1, None, 0),
  (11, 'rod', 2, 1, None, 0),
- (12, 'rod', 3, 1, None, 0)]
+ (12, 'rod', 3, 1, None, 0),
+ (13, 'rod', 6, 1, None, 0),
+ (14, 'accessory', 5, 1, None, 0),
+ (15, 'accessory', 6, 1, None, 0),
+ (16, 'accessory', 7, 1, None, 0),
+ (17, 'rod', 6, 1, None, 0),
+ (18, 'accessory', 4, 1, None, 0)]
