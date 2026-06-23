@@ -46,7 +46,7 @@ def test_fresh_database_bootstraps_complete_playable_catalog(tmp_path):
         row[1] for row in connection.execute("PRAGMA table_info(users)")
     }
     assert "exchange_capacity" in user_columns
-    assert connection.execute("SELECT version FROM schema_version").fetchone()[0] == 50
+    assert connection.execute("SELECT version FROM schema_version").fetchone()[0] == 51
     assert connection.execute(
         """
         SELECT COUNT(*) FROM sqlite_master

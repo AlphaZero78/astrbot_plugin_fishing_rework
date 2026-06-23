@@ -37,6 +37,15 @@ def load_fish_values(
         """,
         (zone_id,),
     ).fetchall()
+    if not rows:
+        rows = connection.execute(
+            """
+            SELECT rarity, base_value
+            FROM fish
+            ORDER BY rarity, fish_id
+            """
+        ).fetchall()
+
     result: dict[int, list[float]] = {}
     for rarity, base_value in rows:
         result.setdefault(int(rarity), []).append(float(base_value))

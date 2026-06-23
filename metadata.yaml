@@ -1,6 +1,6 @@
 name: astrbot_plugin_fishing_rework
 display_name: Fishing Rework
-version: 3.1.6
+version: 3.1.7
 author: "AlphaZero78"
 description: "独立维护的 AstrBot 多人钓鱼与经济系统，支持共享数据库、WebUI、数值分析和旧存档迁移。"
 repo: https://github.com/AlphaZero78/astrbot_plugin_fishing_rework
