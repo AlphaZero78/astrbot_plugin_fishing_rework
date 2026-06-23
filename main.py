@@ -1064,6 +1064,18 @@ class FishingPlugin(Star):
         """查看你的税收缴纳记录"""
         async for r in social_handlers.tax_record(self, event):
             yield r
+
+    @filter.command("查看税收")
+    async def view_current_tax(self, event: AstrMessageEvent):
+        """查看当前周期累计的预计应缴所得税"""
+        async for r in social_handlers.view_current_tax(self, event):
+            yield r
+
+    @filter.command("提前交税")
+    async def prepay_current_tax(self, event: AstrMessageEvent):
+        """立即结算当前周期截至此刻的所得税"""
+        async for r in social_handlers.prepay_current_tax(self, event):
+            yield r
             
     # =========== 交易所 ==========
 

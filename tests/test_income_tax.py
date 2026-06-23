@@ -14,6 +14,8 @@ from astrbot_plugin_fishing.core.repositories.sqlite_log_repo import (
 from astrbot_plugin_fishing.core.repositories.sqlite_user_repo import (
     SqliteUserRepository,
 )
+from astrbot_plugin_fishing.core.domain.models import User
+from astrbot_plugin_fishing.core.services import fishing_service as fishing_module
 from astrbot_plugin_fishing.core.services.fishing_service import FishingService
 
 
@@ -495,3 +497,128 @@ def test_daily_income_tax_liquidates_exchange_before_ignoring_remainder(tmp_path
     assert "已自动清仓交易所持仓" in notifications[0][1]
     assert "实际缴纳：600 金币" in notifications[0][1]
     assert "忽略未缴：600 金币" in notifications[0][1]
+
+
+class _EstimateUserRepo:
+    db_path = None
+
+    def __init__(self, user, taxable_profit):
+        self.user = user
+        self.taxable_profit = taxable_profit
+
+    def get_by_id(self, user_id):
+        return self.user if self.user.user_id == user_id else None
+
+    def update(self, user):
+        self.user = user
+
+    def get_income_totals(self, period_start, period_end):
+        return {self.user.user_id: self.taxable_profit}
+
+
+class _EstimateLogRepo:
+    def __init__(self):
+        self.records = []
+
+    def add_tax_record(self, record):
+        self.records.append(record)
+
+    def get_prepaid_tax_for_period(self, user_id, period_label):
+        total = 0
+        prefix = f"提前所得税 | 周期 {period_label} |"
+        for record in self.records:
+            if record.user_id != user_id or not record.tax_type.startswith(prefix):
+                continue
+            total += record.tax_amount
+            marker = "未缴 "
+            if marker in record.tax_type and " 金币已忽略" in record.tax_type:
+                text = record.tax_type.split(marker, 1)[1].split(
+                    " 金币已忽略", 1
+                )[0]
+                total += int(text.replace(",", ""))
+        return total
+
+    def has_tax_record_type(self, user_id, tax_type):
+        return any(
+            record.user_id == user_id
+            and (
+                record.tax_type == tax_type
+                or record.tax_type.startswith(f"{tax_type} |")
+            )
+            for record in self.records
+        )
+
+
+def _estimate_service(user, taxable_profit):
+    user_repo = _EstimateUserRepo(user, taxable_profit)
+    log_repo = _EstimateLogRepo()
+    service = FishingService(
+        user_repo=user_repo,
+        inventory_repo=SimpleNamespace(),
+        item_template_repo=SimpleNamespace(),
+        log_repo=log_repo,
+        buff_repo=SimpleNamespace(),
+        fishing_zone_service=None,
+        config={
+            "daily_reset_hour": 12,
+            "tax": {
+                "is_tax": True,
+                "threshold": 1_000_000,
+                "step_coins": 100_000,
+                "step_rate": 0.01,
+                "min_rate": 0.001,
+                "max_rate": 0.2,
+            },
+        },
+    )
+    return service, user_repo, log_repo
+
+
+def test_current_tax_estimate_uses_open_noon_period(monkeypatch):
+    now = datetime(2026, 6, 22, 18, 30, tzinfo=UTC8)
+    user = User(
+        user_id="u1",
+        nickname="tester",
+        coins=10_000,
+        created_at=now,
+    )
+    service, _, _ = _estimate_service(user, 1_200_000)
+
+    estimate = service.get_current_tax_estimate("u1", now=now)
+
+    assert estimate["period_start"] == datetime(
+        2026, 6, 22, 12, 0, tzinfo=UTC8
+    )
+    assert estimate["taxable_profit"] == 1_200_000
+    assert estimate["estimated_tax"] == 1_200
+    assert estimate["prepaid_tax"] == 0
+    assert estimate["outstanding_tax"] == 1_200
+
+
+def test_prepay_tax_only_collects_incremental_difference(monkeypatch):
+    now = datetime(2026, 6, 23, 10, 0, tzinfo=UTC8)
+    monkeypatch.setattr(fishing_module, "get_now", lambda: now)
+    user = User(
+        user_id="u1",
+        nickname="tester",
+        coins=10_000,
+        created_at=now,
+    )
+    service, user_repo, log_repo = _estimate_service(user, 1_200_000)
+
+    first = service.prepay_current_tax("u1")
+    second = service.prepay_current_tax("u1")
+
+    assert first["paid_tax"] == 1_200
+    assert second["paid_tax"] == 0
+    assert user_repo.user.coins == 8_800
+    assert len(log_repo.records) == 1
+
+    user_repo.taxable_profit = 1_300_000
+    period_end = datetime(2026, 6, 23, 12, 0, tzinfo=UTC8)
+    service.apply_daily_taxes(period_end)
+
+    assert user_repo.user.coins == 6_700
+    assert len(log_repo.records) == 2
+    assert log_repo.records[-1].tax_amount == 2_100
+    assert "已提前缴纳 1,200 金币" in log_repo.records[-1].tax_type

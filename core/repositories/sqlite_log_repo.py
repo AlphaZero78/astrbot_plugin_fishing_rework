@@ -1,5 +1,6 @@
 import sqlite3
 import threading
+import re
 from typing import Optional, List, Dict
 from datetime import date, datetime, timedelta, timezone
 # 导入抽象基类和领域模型
@@ -469,6 +470,29 @@ class SqliteLogRepository(AbstractLogRepository):
                 (user_id, tax_type, f"{tax_type} |%"),
             ).fetchone()
             return row is not None
+
+    def get_prepaid_tax_for_period(
+        self, user_id: str, period_label: str
+    ) -> int:
+        with self._get_connection() as conn:
+            rows = conn.execute(
+                """
+                SELECT tax_amount, tax_type
+                FROM taxes
+                WHERE user_id = ?
+                  AND tax_type LIKE ?
+                """,
+                (user_id, f"提前所得税 | 周期 {period_label} |%"),
+            ).fetchall()
+            settled_tax = 0
+            for row in rows:
+                settled_tax += int(row["tax_amount"] or 0)
+                match = re.search(
+                    r"未缴 ([\d,]+) 金币已忽略", row["tax_type"] or ""
+                )
+                if match:
+                    settled_tax += int(match.group(1).replace(",", ""))
+            return settled_tax
 
     def get_max_wipe_bomb_multiplier(self, user_id: str) -> float:
         with self._get_connection() as conn:

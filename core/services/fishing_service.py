@@ -783,6 +783,186 @@ class FishingService:
         effective_rate = tax_amount / income if income > 0 else 0.0
         return tax_amount, taxable_income, effective_rate
 
+    def get_current_tax_estimate(
+        self, user_id: str, now=None
+    ) -> Dict[str, Any]:
+        """Estimate tax accrued in the currently open noon-to-noon period."""
+        user = self.user_repo.get_by_id(user_id)
+        if not user:
+            return {"success": False, "message": "用户不存在"}
+
+        now = now or get_now()
+        period_start = now.replace(
+            hour=self.daily_tax_hour,
+            minute=0,
+            second=0,
+            microsecond=0,
+        )
+        if now < period_start:
+            period_start -= timedelta(days=1)
+
+        tax_config = self.config.get("tax", {})
+        threshold = tax_config.get("threshold", 10_000_000)
+        step_coins = tax_config.get("step_coins", 100_000)
+        step_rate = tax_config.get("step_rate", 0.01)
+        min_rate = tax_config.get("min_rate", 0.001)
+        max_rate = tax_config.get("max_rate", 0.2)
+        total_income = self.user_repo.get_income_totals(
+            period_start, now
+        ).get(user_id, 0)
+        tax_amount, taxable_income, effective_rate = (
+            self._calculate_progressive_income_tax(
+                total_income,
+                threshold,
+                step_coins,
+                step_rate,
+                min_rate,
+                max_rate,
+            )
+        )
+        scheduled_end = period_start + timedelta(days=1)
+        period_label = (
+            f"{period_start.strftime('%Y-%m-%d %H:%M')}~"
+            f"{scheduled_end.strftime('%Y-%m-%d %H:%M')}"
+        )
+        prepaid_tax = self.log_repo.get_prepaid_tax_for_period(
+            user_id, period_label
+        )
+        outstanding_tax = max(tax_amount - prepaid_tax, 0)
+        return {
+            "success": True,
+            "period_start": period_start,
+            "period_end": now,
+            "taxable_profit": total_income,
+            "threshold": threshold,
+            "taxable_income": taxable_income,
+            "estimated_tax": tax_amount,
+            "prepaid_tax": prepaid_tax,
+            "outstanding_tax": outstanding_tax,
+            "effective_rate": effective_rate,
+            "coins": user.coins,
+            "cash_shortfall": max(
+                outstanding_tax - max(int(user.coins), 0), 0
+            ),
+            "period_label": period_label,
+        }
+
+    def _collect_tax_payment(
+        self,
+        user_id: str,
+        requested_tax: int,
+        execution_id: str,
+    ) -> Dict[str, Any]:
+        """Collect tax without producing a negative cash balance."""
+        user = self.user_repo.get_by_id(user_id)
+        if not user:
+            return {"success": False, "message": "用户不存在"}
+
+        liquidation_income = 0
+        liquidation_performed = False
+        liquidation_message = ""
+        if (
+            requested_tax > max(int(user.coins), 0)
+            and self.exchange_service is not None
+        ):
+            liquidation = self.exchange_service.clear_all_inventory(user_id)
+            if liquidation.get("success"):
+                user = self.user_repo.get_by_id(user_id) or user
+                liquidation_performed = True
+                liquidation_income = int(liquidation.get("net_income", 0))
+                liquidation_message = (
+                    f"余额不足已自动清仓交易所，净收入 "
+                    f"{liquidation_income:,} 金币"
+                )
+            elif liquidation.get("message") not in {"库存为空", "用户不存在"}:
+                liquidation_message = (
+                    f"自动清仓失败：{liquidation.get('message', '未知原因')}"
+                )
+
+        paid_tax = min(requested_tax, max(int(user.coins), 0))
+        if paid_tax > 0:
+            user.coins -= paid_tax
+            self.user_repo.update(user)
+        unpaid_tax = requested_tax - paid_tax
+
+        if liquidation_performed and self._notifier:
+            try:
+                self._notifier(
+                    user_id,
+                    (
+                        "📜 所得税余额不足，已自动清仓交易所持仓。\n"
+                        f"本次应缴：{requested_tax:,} 金币\n"
+                        f"清仓净收入：{liquidation_income:,} 金币\n"
+                        f"实际缴纳：{paid_tax:,} 金币\n"
+                        f"忽略未缴：{unpaid_tax:,} 金币"
+                    ),
+                )
+            except Exception as e:
+                logger.warning(
+                    f"[税收-{execution_id}] 向用户 {user_id} 发送自动清仓提醒失败: {e}"
+                )
+
+        return {
+            "success": True,
+            "user": user,
+            "paid_tax": paid_tax,
+            "unpaid_tax": unpaid_tax,
+            "liquidation_income": liquidation_income,
+            "liquidation_performed": liquidation_performed,
+            "liquidation_message": liquidation_message,
+        }
+
+    def prepay_current_tax(self, user_id: str) -> Dict[str, Any]:
+        """Immediately settle the current period's outstanding estimated tax."""
+        import uuid
+
+        execution_id = uuid.uuid4().hex[:8]
+        estimate = self.get_current_tax_estimate(user_id)
+        if not estimate.get("success"):
+            return estimate
+        requested_tax = estimate["outstanding_tax"]
+        if requested_tax <= 0:
+            return {
+                **estimate,
+                "success": True,
+                "paid_tax": 0,
+                "unpaid_tax": 0,
+                "message": "当前没有需要提前缴纳的所得税。",
+            }
+
+        payment = self._collect_tax_payment(
+            user_id, requested_tax, execution_id
+        )
+        if not payment.get("success"):
+            return payment
+        tax_type = (
+            f"提前所得税 | 周期 {estimate['period_label']} | "
+            f"应税盈利 {estimate['taxable_profit']:,} 金币 | "
+            f"累计应纳 {estimate['estimated_tax']:,} 金币 | "
+            f"此前已缴 {estimate['prepaid_tax']:,} 金币"
+        )
+        if payment["liquidation_message"]:
+            tax_type += f" | {payment['liquidation_message']}"
+        if payment["unpaid_tax"] > 0:
+            tax_type += f" | 未缴 {payment['unpaid_tax']:,} 金币已忽略"
+        self.log_repo.add_tax_record(
+            TaxRecord(
+                tax_id=0,
+                user_id=user_id,
+                tax_amount=payment["paid_tax"],
+                tax_rate=estimate["effective_rate"],
+                original_amount=estimate["taxable_profit"],
+                balance_after=payment["user"].coins,
+                timestamp=get_now(),
+                tax_type=tax_type,
+            )
+        )
+        return {
+            **estimate,
+            **payment,
+            "message": "提前交税完成",
+        }
+
     def apply_daily_taxes(self, period_end=None) -> None:
         """Analyze and tax classified profit from the previous period."""
         import uuid
@@ -858,58 +1038,29 @@ class FishingService:
                 skipped_user_count += 1
                 continue
 
-            liquidation_message = ""
-            liquidation_income = 0
-            liquidation_performed = False
-            if (
-                tax_amount > max(int(user.coins), 0)
-                and self.exchange_service is not None
-            ):
-                liquidation = self.exchange_service.clear_all_inventory(user_id)
-                if liquidation.get("success"):
-                    user = self.user_repo.get_by_id(user_id) or user
-                    liquidation_performed = True
-                    liquidation_income = int(liquidation.get("net_income", 0))
-                    liquidation_message = (
-                        f" | 余额不足已自动清仓交易所，净收入 "
-                        f"{liquidation_income:,} 金币"
-                    )
-                elif liquidation.get("message") not in {"库存为空", "用户不存在"}:
-                    liquidation_message = (
-                        f" | 自动清仓失败：{liquidation.get('message', '未知原因')}"
-                    )
-
-            payable_tax = min(tax_amount, max(int(user.coins), 0))
+            prepaid_tax = self.log_repo.get_prepaid_tax_for_period(
+                user_id, period_label
+            )
+            requested_tax = max(tax_amount - prepaid_tax, 0)
+            payment = self._collect_tax_payment(
+                user_id, requested_tax, execution_id
+            )
+            user = payment["user"]
+            payable_tax = payment["paid_tax"]
+            total_tax_collected += payable_tax
             if payable_tax > 0:
-                user.coins -= payable_tax
-                self.user_repo.update(user)
-                total_tax_collected += payable_tax
                 taxed_user_count += 1
 
             if tax_amount == 0:
                 tax_type += " | 未达到免征额"
             else:
-                tax_type += liquidation_message
-                unpaid_tax = tax_amount - payable_tax
+                if prepaid_tax > 0:
+                    tax_type += f" | 已提前缴纳 {prepaid_tax:,} 金币"
+                if payment["liquidation_message"]:
+                    tax_type += f" | {payment['liquidation_message']}"
+                unpaid_tax = payment["unpaid_tax"]
                 if unpaid_tax > 0:
                     tax_type += f" | 未缴 {unpaid_tax:,} 金币已忽略"
-
-            if liquidation_performed and self._notifier:
-                try:
-                    self._notifier(
-                        user_id,
-                        (
-                            "📜 每日所得税余额不足，已自动清仓交易所持仓。\n"
-                            f"应纳税额：{tax_amount:,} 金币\n"
-                            f"清仓净收入：{liquidation_income:,} 金币\n"
-                            f"实际缴纳：{payable_tax:,} 金币\n"
-                            f"忽略未缴：{tax_amount - payable_tax:,} 金币"
-                        ),
-                    )
-                except Exception as e:
-                    logger.warning(
-                        f"[税收-{execution_id}] 向用户 {user_id} 发送自动清仓提醒失败: {e}"
-                    )
 
             self.log_repo.add_tax_record(
                 TaxRecord(

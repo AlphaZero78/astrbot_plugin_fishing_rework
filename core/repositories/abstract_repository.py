@@ -526,6 +526,10 @@ class AbstractLogRepository(ABC):
     def has_user_daily_tax_today(self, user_id: str, reset_hour: int = 0) -> bool: pass
     def has_tax_record_type(self, user_id: str, tax_type: str) -> bool:
         raise NotImplementedError
+    def get_prepaid_tax_for_period(
+        self, user_id: str, period_label: str
+    ) -> int:
+        raise NotImplementedError
     # 获取用户历史上最大的擦弹倍数
     @abstractmethod
     def get_max_wipe_bomb_multiplier(self, user_id: str) -> float: pass

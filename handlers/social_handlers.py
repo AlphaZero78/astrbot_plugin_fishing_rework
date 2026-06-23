@@ -285,3 +285,69 @@ async def tax_record(plugin: "FishingPlugin", event: AstrMessageEvent):
         yield event.plain_result(message)
     else:
         yield event.plain_result(f"❌ 查看税收记录失败：{result.get('message', '未知错误')}")
+
+
+async def view_current_tax(plugin: "FishingPlugin", event: AstrMessageEvent):
+    """查看当前结算周期累计的预计所得税。"""
+    user_id = plugin._get_effective_user_id(event)
+    result = plugin.fishing_service.get_current_tax_estimate(user_id)
+    if not result.get("success"):
+        yield event.plain_result(
+            f"❌ 查看税收失败：{result.get('message', '未知错误')}"
+        )
+        return
+
+    rate = result["effective_rate"] * 100
+    message = (
+        "【📊 当前预计税收】\n"
+        f"结算周期：{result['period_start'].strftime('%Y-%m-%d %H:%M')} "
+        f"至 {result['period_end'].strftime('%Y-%m-%d %H:%M')}\n"
+        f"应税盈利：{result['taxable_profit']:,} 金币\n"
+        f"免征额：{result['threshold']:,} 金币\n"
+        f"超额税基：{result['taxable_income']:,} 金币\n"
+        f"累计应纳：{result['estimated_tax']:,} 金币\n"
+        f"已提前结算：{result['prepaid_tax']:,} 金币\n"
+        f"当前还应缴：{result['outstanding_tax']:,} 金币\n"
+        f"综合税率：{rate:.2f}%\n"
+        f"当前现金：{result['coins']:,} 金币"
+    )
+    if result["cash_shortfall"] > 0:
+        message += (
+            f"\n余额缺口：{result['cash_shortfall']:,} 金币"
+            "\n结算时会先自动清仓交易所；仍不足的部分将忽略。"
+        )
+    else:
+        message += "\n当前现金足以缴纳预计税额。"
+    message += "\n\n仅为当前实时估算，实际金额以每日 12:00 结算为准。"
+    yield event.plain_result(message)
+
+
+async def prepay_current_tax(plugin: "FishingPlugin", event: AstrMessageEvent):
+    """立即结算当前周期截至此刻的所得税。"""
+    user_id = plugin._get_effective_user_id(event)
+    result = plugin.fishing_service.prepay_current_tax(user_id)
+    if not result.get("success"):
+        yield event.plain_result(
+            f"❌ 提前交税失败：{result.get('message', '未知错误')}"
+        )
+        return
+    if result.get("paid_tax", 0) == 0 and result.get("unpaid_tax", 0) == 0:
+        yield event.plain_result("📜 当前没有需要提前缴纳的所得税。")
+        return
+
+    message = (
+        "【📜 提前交税完成】\n"
+        f"当前周期应税盈利：{result['taxable_profit']:,} 金币\n"
+        f"累计应纳税额：{result['estimated_tax']:,} 金币\n"
+        f"此前已结算：{result['prepaid_tax']:,} 金币\n"
+        f"本次实际缴纳：{result['paid_tax']:,} 金币\n"
+        f"本次忽略未缴：{result['unpaid_tax']:,} 金币\n"
+        f"剩余现金：{result['user'].coins:,} 金币"
+    )
+    if result.get("liquidation_performed"):
+        message += (
+            f"\n已自动清仓交易所，净收入 "
+            f"{result['liquidation_income']:,} 金币"
+        )
+    message += "\n后续新增盈利只需补交产生的税额差额。"
+    yield event.plain_result(message)
