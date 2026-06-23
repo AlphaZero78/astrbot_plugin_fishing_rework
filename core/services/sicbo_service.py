@@ -396,6 +396,39 @@ class SicboService:
                 logger.error(f"发送骰宝结果公告失败: {e}")
         
         return result
+
+    async def force_settle_all_games(self) -> Dict[str, Any]:
+        """Settle every active game across all sessions."""
+        active_session_ids = [
+            session_id
+            for session_id, game in self.games.items()
+            if game and game.is_active
+        ]
+        if not active_session_ids:
+            return {
+                "success": False,
+                "message": "❌ 所有会话中都没有进行中的骰宝游戏",
+                "settled_count": 0,
+            }
+
+        settled_count = 0
+        failed_sessions = []
+        for session_id in active_session_ids:
+            result = await self.force_settle_game(session_id)
+            if result.get("success"):
+                settled_count += 1
+            else:
+                failed_sessions.append(session_id)
+
+        message = f"✅ 已结算所有会话中的 {settled_count} 场骰宝游戏"
+        if failed_sessions:
+            message += f"\n⚠️ {len(failed_sessions)} 场结算失败"
+        return {
+            "success": settled_count > 0,
+            "message": message,
+            "settled_count": settled_count,
+            "failed_sessions": failed_sessions,
+        }
     
     async def _settle_game(self, session_id: str) -> Dict[str, Any]:
         """结算游戏"""

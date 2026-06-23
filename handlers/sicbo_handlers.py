@@ -446,10 +446,9 @@ async def sicbo_odds(plugin: "FishingPlugin", event: AstrMessageEvent):
 
 
 async def force_settle_sicbo(plugin: "FishingPlugin", event: AstrMessageEvent):
-    """管理员强制结算骰宝游戏"""
+    """管理员强制结算所有会话中的骰宝游戏"""
     try:
-        game_session_id = _get_game_session_id(event)
-        result = await plugin.sicbo_service.force_settle_game(game_session_id)
+        result = await plugin.sicbo_service.force_settle_all_games()
         yield event.plain_result(result["message"])
     except Exception as e:
         yield event.plain_result(f"❌ 强制结算失败：{str(e)}")
@@ -461,7 +460,10 @@ async def set_sicbo_countdown(plugin: "FishingPlugin", event: AstrMessageEvent):
     
     if len(args) < 2:
         current_time = plugin.sicbo_service.get_countdown_seconds()
-        yield event.plain_result(f"🕐 当前骰宝倒计时设置为 {current_time} 秒\n用法：/骰宝倒计时 <秒数>")
+        yield event.plain_result(
+            f"🕐 所有会话的骰宝倒计时均为 {current_time} 秒\n"
+            "用法：/骰宝倒计时 <秒数>"
+        )
         return
     
     try:
@@ -493,7 +495,10 @@ async def set_sicbo_mode(plugin: "FishingPlugin", event: AstrMessageEvent):
     if len(args) < 2:
         current_mode = plugin.sicbo_service.get_message_mode()
         mode_name = "图片模式" if current_mode == "image" else "文本模式"
-        yield event.plain_result(f"📱 当前骰宝消息模式：{mode_name}\n用法：/骰宝模式 <image|text>")
+        yield event.plain_result(
+            f"📱 所有会话的骰宝消息模式：{mode_name}\n"
+            "用法：/骰宝模式 <image|text>"
+        )
         return
     
     try:

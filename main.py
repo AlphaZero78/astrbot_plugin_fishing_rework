@@ -1295,14 +1295,14 @@ class FishingPlugin(Star):
     @filter.permission_type(PermissionType.ADMIN)
     @filter.command("清理红包")
     async def cleanup_red_packets(self, event: AstrMessageEvent):
-        """[管理员] 清理红包。用法：/清理红包 [所有]（不带参数清理当前群，带"所有"清理全局）"""
+        """[管理员] 清理所有会话中的红包并退还未领取金额"""
         async for r in red_packet_handlers.cleanup_red_packets(self, event):
             yield r
 
     @filter.permission_type(PermissionType.ADMIN)
     @filter.command("骰宝结算")
     async def force_settle_sicbo(self, event: AstrMessageEvent):
-        """[管理员] 跳过倒计时直接结算当前骰宝游戏"""
+        """[管理员] 跳过倒计时并结算所有会话中的骰宝游戏"""
         async for r in sicbo_handlers.force_settle_sicbo(self, event):
             yield r
 

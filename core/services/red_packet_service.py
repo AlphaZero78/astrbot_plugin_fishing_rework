@@ -20,6 +20,7 @@ class RedPacketService:
         self.red_packet_repo = red_packet_repo
         self.user_repo = user_repo
         self.min_amount = 100  # 最低发红包金额
+        self.max_total_amount = 10_000_000  # 单个红包总金额上限
         self.max_packet_count = 200  # 最多红包个数
         self.expire_hours = 24  # 红包过期时间（小时）
 
@@ -72,6 +73,15 @@ class RedPacketService:
             # 验证总金额至少要能给每个红包分1金币
             if total_amount < count:
                 return {"success": False, "message": f"❌ 拼手气红包总金额必须 ≥ 红包数量（每个至少1金币）"}
+
+        if total_amount > self.max_total_amount:
+            return {
+                "success": False,
+                "message": (
+                    "❌ 单个红包总金额不能超过 "
+                    f"{self.max_total_amount:,} 金币"
+                ),
+            }
         
         # 检查发送者余额
         sender = self.user_repo.get_by_id(sender_id)
