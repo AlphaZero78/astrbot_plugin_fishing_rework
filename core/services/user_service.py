@@ -49,6 +49,11 @@ class UserService:
         self.gacha_service = gacha_service
         self.config = config
         self.achievement_repo = achievement_repo
+        self.tax_estimate_provider = None
+
+    def set_tax_estimate_provider(self, provider) -> None:
+        """Set the current-period tax estimator used by transfer safeguards."""
+        self.tax_estimate_provider = provider
 
     def register(self, user_id: str, nickname: str) -> Dict[str, Any]:
         """
@@ -443,6 +448,45 @@ class UserService:
                           f"📊 需要总计：{total_cost} 金币\n"
                           f"💳 当前余额：{from_user.coins} 金币"
             }
+
+        if (
+            tax_config.get("is_tax", True)
+            and self.tax_estimate_provider is not None
+        ):
+            try:
+                estimate = self.tax_estimate_provider(from_user_id)
+            except Exception:
+                return {
+                    "success": False,
+                    "message": "❌ 暂时无法核算待缴所得税，请稍后重试",
+                }
+            if not estimate.get("success"):
+                return {
+                    "success": False,
+                    "message": (
+                        "❌ 暂时无法核算待缴所得税："
+                        f"{estimate.get('message', '未知错误')}"
+                    ),
+                }
+
+            reserved_tax = max(
+                int(estimate.get("outstanding_tax", 0)), 0
+            )
+            transferable_coins = max(
+                int(from_user.coins) - reserved_tax, 0
+            )
+            if total_cost > transferable_coins:
+                return {
+                    "success": False,
+                    "message": (
+                        "❌ 可转账余额不足！\n"
+                        f"💳 当前余额：{from_user.coins:,} 金币\n"
+                        f"📜 待缴所得税预留：{reserved_tax:,} 金币\n"
+                        f"💰 可转账余额：{transferable_coins:,} 金币\n"
+                        f"📊 本次需要总计：{total_cost:,} 金币\n"
+                        "可使用 /提前交税 结算后再转账"
+                    ),
+                }
         
         # 记录转账前的金额
         original_coins = from_user.coins

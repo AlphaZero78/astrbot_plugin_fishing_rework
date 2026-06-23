@@ -141,6 +141,9 @@ class FishingPlugin(Star):
             self.fishing_zone_service,
             self.game_config,
         )
+        self.user_service.set_tax_estimate_provider(
+            self.fishing_service.get_current_tax_estimate
+        )
         
         # 导入并初始化水族箱服务
         from .core.services.aquarium_service import AquariumService
