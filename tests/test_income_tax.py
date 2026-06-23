@@ -256,7 +256,7 @@ def test_daily_income_tax_records_period_and_deducts_once(tmp_path):
     assert "应税收入 200,000 金币" in records[0].tax_type
 
 
-def test_daily_income_tax_keeps_full_liability_when_cash_was_moved(tmp_path):
+def test_daily_income_tax_ignores_unpaid_amount_without_negative_balance(tmp_path):
     database = tmp_path / "fish.db"
     connection = sqlite3.connect(database)
     connection.executescript(
@@ -362,6 +362,136 @@ def test_daily_income_tax_keeps_full_liability_when_cash_was_moved(tmp_path):
 
     user = user_repo.get_by_id("u1")
     record = log_repo.get_tax_records("u1", limit=1)[0]
-    assert user.coins == -1_100
-    assert record.tax_amount == 1_200
-    assert "税后负余额 -1,100 金币" in record.tax_type
+    assert user.coins == 0
+    assert record.tax_amount == 100
+    assert "未缴 1,100 金币已忽略" in record.tax_type
+
+
+def test_daily_income_tax_liquidates_exchange_before_ignoring_remainder(tmp_path):
+    database = tmp_path / "fish.db"
+    connection = sqlite3.connect(database)
+    connection.executescript(
+        """
+        CREATE TABLE users (
+            user_id TEXT PRIMARY KEY,
+            nickname TEXT,
+            coins INTEGER,
+            premium_currency INTEGER DEFAULT 0,
+            total_fishing_count INTEGER DEFAULT 0,
+            total_weight_caught REAL DEFAULT 0,
+            total_coins_earned INTEGER DEFAULT 0,
+            max_coins INTEGER DEFAULT 0,
+            consecutive_login_days INTEGER DEFAULT 0,
+            fish_pond_capacity INTEGER DEFAULT 50,
+            aquarium_capacity INTEGER DEFAULT 50,
+            created_at DATETIME,
+            equipped_rod_instance_id INTEGER,
+            equipped_accessory_instance_id INTEGER,
+            current_title_id INTEGER,
+            current_bait_id INTEGER,
+            bait_start_time DATETIME,
+            max_wipe_bomb_multiplier REAL DEFAULT 0,
+            min_wipe_bomb_multiplier REAL,
+            auto_fishing_enabled INTEGER DEFAULT 0,
+            last_fishing_time DATETIME,
+            last_wipe_bomb_time DATETIME,
+            last_steal_time DATETIME,
+            last_electric_fish_time DATETIME,
+            last_login_time DATETIME,
+            last_stolen_at DATETIME,
+            wipe_bomb_forecast TEXT,
+            fishing_zone_id INTEGER DEFAULT 1,
+            wipe_bomb_attempts_today INTEGER DEFAULT 0,
+            last_wipe_bomb_date TEXT,
+            in_wheel_of_fate INTEGER DEFAULT 0,
+            wof_current_level INTEGER DEFAULT 0,
+            wof_current_prize INTEGER DEFAULT 0,
+            wof_entry_fee INTEGER DEFAULT 0,
+            last_wof_play_time DATETIME,
+            wof_last_action_time DATETIME,
+            wof_plays_today INTEGER DEFAULT 0,
+            last_wof_date TEXT,
+            last_sicbo_time DATETIME,
+            exchange_account_status INTEGER DEFAULT 0,
+            exchange_capacity INTEGER DEFAULT 1000
+        );
+        CREATE TABLE taxes (
+            tax_id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id TEXT NOT NULL,
+            tax_amount INTEGER NOT NULL,
+            tax_rate REAL NOT NULL,
+            original_amount INTEGER NOT NULL,
+            timestamp DATETIME,
+            tax_type TEXT NOT NULL,
+            balance_after INTEGER NOT NULL
+        );
+        """
+    )
+    connection.execute(
+        """
+        INSERT INTO users (user_id, nickname, coins, created_at)
+        VALUES ('u1', 'tester', 100, '2026-06-20 00:00:00')
+        """
+    )
+    _apply_income_migrations(connection)
+    connection.execute(
+        """
+        INSERT INTO income_records (
+            user_id, amount, taxable_amount, balance_after, source, timestamp
+        )
+        VALUES ('u1', 1200000, 1200000, 100, 'test', ?)
+        """,
+        ("2026-06-22 10:00:00+08:00",),
+    )
+    connection.commit()
+    connection.close()
+
+    user_repo = SqliteUserRepository(str(database))
+    log_repo = SqliteLogRepository(str(database))
+
+    class FakeExchangeService:
+        def clear_all_inventory(self, user_id):
+            user = user_repo.get_by_id(user_id)
+            user.coins += 500
+            user_repo.update(user)
+            return {"success": True, "net_income": 500}
+
+    service = FishingService(
+        user_repo=user_repo,
+        inventory_repo=SimpleNamespace(),
+        item_template_repo=SimpleNamespace(),
+        log_repo=log_repo,
+        buff_repo=SimpleNamespace(),
+        fishing_zone_service=None,
+        config={
+            "daily_reset_hour": 12,
+            "tax": {
+                "is_tax": True,
+                "threshold": 1_000_000,
+                "step_coins": 100_000,
+                "step_rate": 0.01,
+                "min_rate": 0.001,
+                "max_rate": 0.2,
+            },
+        },
+    )
+    notifications = []
+    service.register_notifier(
+        lambda target, message: notifications.append((target, message))
+    )
+    service.set_exchange_service(FakeExchangeService())
+    service.apply_daily_taxes(
+        datetime(2026, 6, 22, 12, 0, tzinfo=UTC8)
+    )
+
+    user = user_repo.get_by_id("u1")
+    record = log_repo.get_tax_records("u1", limit=1)[0]
+    assert user.coins == 0
+    assert record.tax_amount == 600
+    assert "自动清仓交易所，净收入 500 金币" in record.tax_type
+    assert "未缴 600 金币已忽略" in record.tax_type
+    assert len(notifications) == 1
+    assert notifications[0][0] == "u1"
+    assert "已自动清仓交易所持仓" in notifications[0][1]
+    assert "实际缴纳：600 金币" in notifications[0][1]
+    assert "忽略未缴：600 金币" in notifications[0][1]

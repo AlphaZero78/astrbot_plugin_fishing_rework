@@ -75,6 +75,7 @@ class FishingService:
         # 通知目标可配置，默认群聊。可由 config['notifications']['relocation_target'] 覆盖
         notifications_cfg = self.config.get("notifications", {}) if isinstance(self.config, dict) else {}
         self._notification_target = notifications_cfg.get("relocation_target", "group")
+        self.exchange_service = None
         
 
     def register_notifier(self, notifier, default_target: Optional[str] = None):
@@ -86,6 +87,10 @@ class FishingService:
         self._notifier = notifier
         if default_target:
             self._notification_target = default_target
+
+    def set_exchange_service(self, exchange_service) -> None:
+        """Attach exchange liquidation support after service construction."""
+        self.exchange_service = exchange_service
 
     @staticmethod
     def _clamp_probability(value: Any, default: float = 0.0) -> float:
@@ -853,7 +858,28 @@ class FishingService:
                 skipped_user_count += 1
                 continue
 
-            payable_tax = tax_amount
+            liquidation_message = ""
+            liquidation_income = 0
+            liquidation_performed = False
+            if (
+                tax_amount > max(int(user.coins), 0)
+                and self.exchange_service is not None
+            ):
+                liquidation = self.exchange_service.clear_all_inventory(user_id)
+                if liquidation.get("success"):
+                    user = self.user_repo.get_by_id(user_id) or user
+                    liquidation_performed = True
+                    liquidation_income = int(liquidation.get("net_income", 0))
+                    liquidation_message = (
+                        f" | 余额不足已自动清仓交易所，净收入 "
+                        f"{liquidation_income:,} 金币"
+                    )
+                elif liquidation.get("message") not in {"库存为空", "用户不存在"}:
+                    liquidation_message = (
+                        f" | 自动清仓失败：{liquidation.get('message', '未知原因')}"
+                    )
+
+            payable_tax = min(tax_amount, max(int(user.coins), 0))
             if payable_tax > 0:
                 user.coins -= payable_tax
                 self.user_repo.update(user)
@@ -862,8 +888,28 @@ class FishingService:
 
             if tax_amount == 0:
                 tax_type += " | 未达到免征额"
-            elif user.coins < 0:
-                tax_type += f" | 税后负余额 {user.coins:,} 金币"
+            else:
+                tax_type += liquidation_message
+                unpaid_tax = tax_amount - payable_tax
+                if unpaid_tax > 0:
+                    tax_type += f" | 未缴 {unpaid_tax:,} 金币已忽略"
+
+            if liquidation_performed and self._notifier:
+                try:
+                    self._notifier(
+                        user_id,
+                        (
+                            "📜 每日所得税余额不足，已自动清仓交易所持仓。\n"
+                            f"应纳税额：{tax_amount:,} 金币\n"
+                            f"清仓净收入：{liquidation_income:,} 金币\n"
+                            f"实际缴纳：{payable_tax:,} 金币\n"
+                            f"忽略未缴：{tax_amount - payable_tax:,} 金币"
+                        ),
+                    )
+                except Exception as e:
+                    logger.warning(
+                        f"[税收-{execution_id}] 向用户 {user_id} 发送自动清仓提醒失败: {e}"
+                    )
 
             self.log_repo.add_tax_record(
                 TaxRecord(

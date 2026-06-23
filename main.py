@@ -152,6 +152,7 @@ class FishingPlugin(Star):
         
         # 初始化交易所服务
         self.exchange_service = ExchangeService(self.user_repo, self.exchange_repo, self.game_config, self.log_repo, self.market_service)
+        self.fishing_service.set_exchange_service(self.exchange_service)
         
         # 初始化骰宝服务
         self.sicbo_service = SicboService(self.user_repo, self.log_repo, self.game_config)
